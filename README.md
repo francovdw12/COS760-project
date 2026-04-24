@@ -15,9 +15,9 @@
 │
 ├── /configs                 <-- Hyperparameters (n-gram sizes, learning rates, epochs)
 └── /notebooks               <-- Exploratory Data Analysis (EDA) and visualization
-
+```
 ## 🚀 Quick Git Reference
-
+```text
 Use this cheat sheet for the standard project workflow. For new folders to appear in `git status`, ensure they contain at least one file (e.g., `.gitkeep`).
 
 | Action | Command |
@@ -48,3 +48,4 @@ git commit -m "feat: initial directory structure"
 
 # 5. Upload to GitLab
 git push origin feature/setup-folders
+```
