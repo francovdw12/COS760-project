@@ -1,15 +1,17 @@
-# COS760-project
+# COS760-project: Optimizing Cross-Lingual Embeddings for Bantu Languages
 
-## Folder Structure:
+## 📂 Folder Structure
+```text
 /COS760-project
 │
-├── .gitignore               <-- files we don't want to upload
-├── requirements.txt         <-- List pandas, fasttext, torch, etc.
-├── /scripts
-│   ├── /preprocessing       <-- Franco's cleaning & subset scripts
-│   ├── /training            <-- Franco's FastText & BiLSTM-CRF scripts
-│   ├── /alignment           <-- Tom's VecMap/KCCA scripts
-│   └── /evaluation          <-- Ndamulelo's scoring scripts
+├── .gitignore               <-- Files we don't want to upload (data, venv, binaries)
+├── requirements.txt         <-- Project dependencies (pandas, fasttext, torch, etc.)
 │
-├── /configs                 <-- Hyperparameters (learning rates, n-gram sizes)
-└── /notebooks               <-- For quick EDA or plotting learning curves
+├── /scripts
+│   ├── /preprocessing       <-- [Franco] Cleaning, normalization, & RQ2 subset generation
+│   ├── /training            <-- [Franco] FastText training & BiLSTM-CRF NER pipeline
+│   ├── /alignment           <-- [Tom] VecMap, CCA, and KCCA alignment logic
+│   └── /evaluation          <-- [Ndamulelo] P@k, CKA scores, and learning curve plotting
+│
+├── /configs                 <-- Hyperparameters (n-gram sizes, learning rates, epochs)
+└── /notebooks               <-- Exploratory Data Analysis (EDA) and visualization
