@@ -1,49 +1,115 @@
-# COS760-project: Optimizing Cross-Lingual Embeddings for Bantu Languages
+# COS760-project
 
-## 📂 Folder Structure
+Cross-lingual embedding alignment experiments for isiZulu, Sepedi, and Setswana.
+
+## Repository Layout
 ```text
-/COS760-project
-│
-├── .gitignore               <-- Files we don't want to upload (data, venv, binaries)
-├── requirements.txt         <-- Project dependencies (pandas, fasttext, torch, etc.)
-│
-├── /scripts
-│   ├── /preprocessing       <-- [Franco] Cleaning, normalization, & RQ2 subset generation
-│   ├── /training            <-- [Franco] FastText training & BiLSTM-CRF NER pipeline
-│   ├── /alignment           <-- [Tom] VecMap, CCA, and KCCA alignment logic
-│   └── /evaluation          <-- [Ndamulelo] P@k, CKA scores, and learning curve plotting
-│
-├── /configs                 <-- Hyperparameters (n-gram sizes, learning rates, epochs)
-└── /notebooks               <-- Exploratory Data Analysis (EDA) and visualization
+COS760-project/
+|-- .venv/
+|-- config.py
+|-- embeddings.py
+|-- evaluation.py
+|-- lexicon.py
+|-- run_rq1.py
+|-- run_rq2.py
+|-- run_rq3.py
+|-- visualize_rq1.py
+|-- alignment/
+|   |-- CCA.py
+|   |-- KCCA.py
+|   `-- VecMap.py
+|-- data/
+|   |-- Bilingual Seed Lexicons/
+|   |-- NCHLT Text Corpora/
+|   |   |-- en/
+|   |   |-- nso/
+|   |   |-- tn/
+|   |   `-- zu/
+|   |-- ner_MasakhaNER 2.0/
+|   |   `-- masakhaner2/
+|   |       |-- zul/
+|   |       `-- tsn/
+|   |-- zulu/
+|   `-- ...
+|-- embeddings/
+|-- results/
+`-- vecmap/
 ```
-## 🚀 Quick Git Reference
-Use this cheat sheet for the standard project workflow. For new folders to appear in `git status`, ensure they contain at least one file (e.g., `.gitkeep`).
 
+## Required Data
+`run_rq1.py` needs three types of data.
+
+### 1. NCHLT Text Corpora
+Required languages:
+- isiZulu
+- Sepedi
+- Setswana
+
+Available in this workspace now:
+- English clean corpus
+- isiZulu clean and raw corpora
+- Sepedi clean and raw corpora
+- Setswana clean and raw corpora
+
+### 2. MasakhaNER 2.0 / SADiLaR NER
+Required languages:
+- isiZulu
+- Sepedi
+- Setswana
+
+
+
+Available in this workspace now:
+- isiZulu folder
+- Setswana folder
+- **Sepedi folder is still missing**
+
+
+Status in this workspace:
+- **all three bilingual seed lexicons are still missing**
+
+## How to Run
+Activate the environment and run the RQ1 pipeline:
+```bash
+source .venv/bin/activate
+python run_rq1.py
+```
+visualization:
+```bash
+python visualize_rq1.py
+```
+
+## What `run_rq1.py` Does
+1. Loads or trains FastText embeddings for English, isiZulu, Sepedi, and Setswana.
+2. Loads the bilingual seed lexicon for each language pair.
+3. Builds train/test lexicon splits.
+4. Aligns embeddings using:
+   - CCA
+   - KCCA
+   - VecMap
+5. Writes the results to `results/rq1_results.csv`.
+
+## Current Missing Files
+The script will keep printing missing-data warnings until these files are added:
+- `data/Bilingual Seed Lexicons/zul_en.txt`
+- `data/Bilingual Seed Lexicons/nso_en.txt`
+- `data/Bilingual Seed Lexicons/tsn_en.txt`
+
+If you want the full RQ1 pipeline to complete end-to-end, these three files are the next thing to fetch.
+
+## Notes
+- The project now uses the `data/` folder inside the repo as the canonical location for datasets.
+- FastText `.bin` files are generated automatically from the NCHLT corpora when they are missing.
+- VecMap also requires text embeddings and will be skipped if the text export is not available yet.
+
+## Quick Git Reference
 | Action | Command |
 | :--- | :--- |
-| **Clone Repo** | `git clone <url>` |
-| **Update Local** | `git pull origin main` |
-| **New Branch** | `git checkout -b <branch-name>` |
-| **Switch Branch** | `git checkout <branch-name>` |
-| **Check Status** | `git status` |
-| **Stage Changes** | `git add .` |
-| **Commit** | `git commit -m "Your message"` |
-| **Push to GitLab** | `git push origin <branch-name>` |
-
-### Standard Workflow Example:
-```bash
-# 1. Get the latest code
-git pull origin main
-
-# 2. Create a branch for your work
-git checkout -b feature/setup-folders
-
-# 3. (Make your changes/add files)
-
-# 4. Check, Stage, and Commit
-git status
-git add .
-git commit -m "feat: initial directory structure"
-
-# 5. Upload to GitLab
-git push origin feature/setup-folders
+| Clone repo | `git clone <url>` |
+| Update local | `git pull origin main` |
+| New branch | `git checkout -b <branch-name>` |
+| Switch branch | `git checkout <branch-name>` |
+| Check status | `git status` |
+| Stage changes | `git add .` |
+| Commit | `git commit -m "Your message"` |
+| Push | `git push origin <branch-name>` |
