@@ -4,12 +4,19 @@ from pathlib import Path
 PROJECT_ROOT = Path(__file__).resolve().parent
 DATA_ROOT = PROJECT_ROOT / "data"
 
+# Local-only generated datasets (ignored by git)
+SUBSETS_ROOT = DATA_ROOT / "subsets"
+
+# English NER training data (proposal: CoNLL-2003)
+CONLL2003_ROOT = DATA_ROOT / "conll2003"
+
 NCHLT_ROOT = DATA_ROOT / "NCHLT Text Corpora"
 MASAKHA_NER_ROOT = DATA_ROOT / "ner_MasakhaNER 2.0" / "masakhaner2"
 BILINGUAL_SEED_LEXICON_ROOT = DATA_ROOT / "Bilingual Seed Lexicons"
 
 EMBEDDINGS_ROOT = PROJECT_ROOT / "embeddings"
 RESULTS_ROOT = PROJECT_ROOT / "results"
+OUTPUTS_ROOT = PROJECT_ROOT / "outputs"
 
 ENGLISH = "eng"
 LANGUAGES = ["zul", "nso", "tsn"]  # isiZulu, Sepedi, Setswana
@@ -99,6 +106,36 @@ def get_embeddings_path(lang):
 
 def get_text_embeddings_path(lang):
     return EMBEDDINGS_ROOT / f"{lang}.txt"
+
+
+def fraction_id(fraction: float) -> str:
+    """Stable identifier for a corpus fraction (e.g., 1.0 -> f100, 0.75 -> f075)."""
+    pct = int(round(float(fraction) * 100))
+    if pct < 0 or pct > 100:
+        raise ValueError(f"fraction must be in [0, 1], got {fraction}")
+    return f"f{pct:03d}"
+
+
+def get_subset_corpus_path(lang: str, fraction: float) -> Path:
+    """Path to the subset corpus used for RQ2 embedding training."""
+    return SUBSETS_ROOT / lang / f"{fraction_id(fraction)}.txt"
+
+
+def get_fraction_embeddings_path(lang: str, fraction: float) -> Path:
+    return EMBEDDINGS_ROOT / f"{lang}_{fraction_id(fraction)}.bin"
+
+
+def get_fraction_text_embeddings_path(lang: str, fraction: float) -> Path:
+    return EMBEDDINGS_ROOT / f"{lang}_{fraction_id(fraction)}.txt"
+
+
+def get_alignment_artifact_path(lang: str, fraction: float, method: str) -> Path:
+    """Saved alignment artifacts for RQ2 (method-specific)."""
+    return EMBEDDINGS_ROOT / "aligned" / fraction_id(fraction) / f"{lang}_{method}.npz"
+
+
+def get_conll2003_root() -> Path:
+    return CONLL2003_ROOT
 
 
 def get_aligned_path(lang, method):

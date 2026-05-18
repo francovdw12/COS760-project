@@ -17,12 +17,14 @@ if [ -z "$PY_BIN" ]; then
 fi
 
 VENV_DIR="$ROOT_DIR/.venv"
-if [ ! -d "$VENV_DIR" ]; then
+if [ ! -d "$VENV_DIR" ] || [ ! -x "$VENV_DIR/bin/python" ]; then
+  rm -rf "$VENV_DIR"
   "$PY_BIN" -m venv "$VENV_DIR"
 fi
 
 "$VENV_DIR/bin/python" -m pip install --upgrade pip setuptools wheel
-"$VENV_DIR/bin/python" -m pip install -r "$ROOT_DIR/requirement.txt"
+"$VENV_DIR/bin/python" -m pip install -r "$ROOT_DIR/requirements.txt"
 
 echo "Install complete."
-echo "Run: $VENV_DIR/bin/python run_rq1.py"
+echo "Run RQ1: $VENV_DIR/bin/python run_rq1.py"
+echo "Run RQ2: $VENV_DIR/bin/python run_rq2.py"

@@ -79,6 +79,50 @@ visualization:
 python visualize_rq1.py
 ```
 
+## RQ2 (Zero-shot NER + Data Efficiency)
+RQ2 is implemented in `run_rq2.py`.
+
+### Required Data (local-only)
+This repo ignores datasets by default (see `.gitignore`). Place files locally under `data/`.
+
+Minimal expected layout:
+```text
+data/
+   NCHLT Text Corpora/              # as in config.py (keep original NCHLT subfolders)
+   Bilingual Seed Lexicons/
+      zul_en.txt
+      nso_en.txt
+      tsn_en.txt
+   ner_MasakhaNER 2.0/masakhaner2/
+      zul/
+      nso/
+      tsn/
+   conll2003/
+      train.txt (or any file containing "train" in its name)
+      dev.txt   (or any file containing "dev"/"valid")
+      test.txt  (or any file containing "test")
+```
+
+RQ2 will also generate subset corpora under `data/subsets/{lang}/` automatically.
+
+### Run
+```bash
+source .venv/bin/activate
+python run_rq2.py
+```
+
+Useful options:
+```bash
+python run_rq2.py --langs zul tsn --fractions 1.0 0.25 0.05 --methods CCA KCCA VecMap --split test
+python run_rq2.py --force   # retrain embeddings/NER and rebuild cached alignment artifacts
+```
+
+### Outputs
+- `results/rq2_results.csv` — per (language, fraction, method): entity-level Precision/Recall/F1.
+- `outputs/ner/bilstm_crf_conll2003.pt` — English BiLSTM-CRF checkpoint.
+- `embeddings/aligned/` — cached CCA/KCCA alignment artifacts per fraction.
+- `outputs/vecmap_*` — VecMap alignment outputs.
+
 ## What `run_rq1.py` Does
 1. Loads or trains FastText embeddings for English, isiZulu, Sepedi, and Setswana.
 2. Loads the bilingual seed lexicon for each language pair.
