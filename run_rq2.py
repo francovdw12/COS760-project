@@ -349,7 +349,7 @@ def run_rq2(
 						aligned_dict = load_txt_embeddings(str(src_aligned_path))
 					else:
 						try:
-							aligned_dict = run_vecmap(
+							aligned_dict, _ = run_vecmap(
 								str(src_txt),
 								str(en_txt),
 								str(lex_path),

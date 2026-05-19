@@ -1,19 +1,30 @@
-
+# lexicon.py - bilingual seed lexicon loading and anchor-matrix building.
 import random
 import numpy as np
 
-def load_lexicon(path: str):
-    """Load a bilingual lexicon (src_word\\ttgt_word per line)."""
+
+def load_lexicon(path):
+    """Load a bilingual lexicon (one "src_word<TAB>tgt_word" pair per line).
+
+    Falls back to whitespace splitting if no tab is present.
+    """
     pairs = []
     with open(path, encoding="utf-8") as f:
         for line in f:
-            parts = line.strip().split("\t")
+            line = line.strip()
+            if not line:
+                continue
+            parts = line.split("\t")
+            if len(parts) != 2:
+                parts = line.split()
             if len(parts) == 2:
                 pairs.append((parts[0], parts[1]))
     return pairs
 
-def split_lexicon(pairs, held_out: int = 1000, seed: int = 42):
-    """Split into train (seed lexicon) and test (held-out)."""
+
+def split_lexicon(pairs, held_out=1000, seed=42):
+    """Split into train (seed lexicon) and test (held-out) pairs."""
+    pairs = list(pairs)
     random.seed(seed)
     random.shuffle(pairs)
     if len(pairs) <= 1:
@@ -22,11 +33,11 @@ def split_lexicon(pairs, held_out: int = 1000, seed: int = 42):
     held_out = min(held_out, len(pairs) - 1)
     return pairs[held_out:], pairs[:held_out]  # train, test
 
-def build_anchor_matrices(train_pairs, src_words, src_matrix,
-                           tgt_words, tgt_matrix):
-    """
-    Build aligned anchor matrices (X_src, X_tgt)
-    from the training lexicon pairs.
+
+def build_anchor_matrices(train_pairs, src_words, src_matrix, tgt_words, tgt_matrix):
+    """Build aligned anchor matrices (X_src, X_tgt) from training lexicon pairs.
+
+    Only pairs whose words are present in both embedding vocabularies are kept.
     """
     src_idx = {w: i for i, w in enumerate(src_words)}
     tgt_idx = {w: i for i, w in enumerate(tgt_words)}

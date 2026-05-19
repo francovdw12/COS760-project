@@ -1,12 +1,13 @@
-# embeddings.py
+# embeddings.py - FastText training and loading helpers.
 import fasttext
 import numpy as np
 
-def train_fasttext(corpus_path: str, output_path: str, dim: int = 100):
+
+def train_fasttext(corpus_path, output_path, dim=100):
     """Train FastText with subwords (important for conjunctive isiZulu)."""
     model = fasttext.train_unsupervised(
         corpus_path,
-        model='skipgram',
+        model="skipgram",
         dim=dim,
         minCount=5,
         wordNgrams=1,
@@ -19,7 +20,7 @@ def train_fasttext(corpus_path: str, output_path: str, dim: int = 100):
     return model
 
 
-def save_embeddings_as_txt(model_path: str, output_path: str, vocab_limit: int = 50000):
+def save_embeddings_as_txt(model_path, output_path, vocab_limit=50000):
     """Export a FastText model to word2vec text format for VecMap."""
     model = fasttext.load_model(model_path)
     words = model.words[:vocab_limit]
@@ -34,16 +35,16 @@ def save_embeddings_as_txt(model_path: str, output_path: str, vocab_limit: int =
             vector_text = " ".join(f"{value:.6f}" for value in vector)
             f.write(f"{word} {vector_text}\n")
 
-def load_embeddings_as_matrix(model_path: str, vocab_limit: int = 50000):
-    """
-    Load a FastText model and return:
-    - words: list of tokens
-    - matrix: np.array (vocab_limit, dim) L2-normalized
+
+def load_embeddings_as_matrix(model_path, vocab_limit=50000):
+    """Load a FastText model and return (words, matrix).
+
+    words: list of tokens.
+    matrix: np.array (vocab, dim), L2-normalised (required before alignment).
     """
     model = fasttext.load_model(model_path)
     words = model.words[:vocab_limit]
     matrix = np.array([model.get_word_vector(w) for w in words])
-    # L2 normalization is required before alignment
     norms = np.linalg.norm(matrix, axis=1, keepdims=True)
     matrix = matrix / np.maximum(norms, 1e-8)
     return words, matrix

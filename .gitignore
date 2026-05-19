@@ -6,6 +6,7 @@ __pycache__/
 # Ignore raw and processed data
 /data/
 *.txt
+!requirement.txt
 *.csv
 *.json
 
