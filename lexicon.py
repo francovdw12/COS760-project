@@ -3,12 +3,35 @@ import random
 import numpy as np
 
 
+def _clean_token(tok):
+    """Strip NCHLT verb-infinitive prefix dash and whitespace."""
+    return tok.strip().lstrip("-").strip()
+
+
+def _expand_slash_entry(src_raw, tgt_raw):
+    """Expand 'a / b → x / y' into [(a,x),(a,y),(b,x),(b,y)], single-word only."""
+    src_parts = [_clean_token(s) for s in src_raw.split("/")]
+    tgt_parts = [_clean_token(t) for t in tgt_raw.split("/")]
+    pairs = []
+    for s in src_parts:
+        for t in tgt_parts:
+            if s and t and " " not in s and " " not in t:
+                pairs.append((s, t))
+    return pairs
+
+
 def load_lexicon(path):
     """Load a bilingual lexicon (one "src_word<TAB>tgt_word" pair per line).
 
-    Falls back to whitespace splitting if no tab is present.
+    Handles three entry formats found in NCHLT lexicons:
+      - Simple single-word pairs:  hamba\\tgo
+      - Slash-separated synonyms:  -ahlula / -mangaza\\toverwhelm
+      - Multi-word entries (skipped — not usable for word-level alignment)
+
+    Leading dashes on verb stems (NCHLT infinitive convention) are stripped.
     """
     pairs = []
+    seen = set()
     with open(path, encoding="utf-8") as f:
         for line in f:
             line = line.strip()
@@ -16,9 +39,16 @@ def load_lexicon(path):
                 continue
             parts = line.split("\t")
             if len(parts) != 2:
-                parts = line.split()
-            if len(parts) == 2:
-                pairs.append((parts[0], parts[1]))
+                parts = line.split(None, 1)
+            if len(parts) != 2:
+                continue
+            src_raw, tgt_raw = parts
+
+            expanded = _expand_slash_entry(src_raw, tgt_raw)
+            for pair in expanded:
+                if pair not in seen:
+                    seen.add(pair)
+                    pairs.append(pair)
     return pairs
 
 

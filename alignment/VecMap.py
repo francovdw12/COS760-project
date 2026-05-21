@@ -74,6 +74,13 @@ def run_vecmap(src_emb_path, tgt_emb_path, lexicon_path, output_dir):
         src_emb_path, tgt_emb_path,
         src_out, tgt_out,
     ]
-    subprocess.run(cmd, check=True)
+    result = subprocess.run(cmd, check=True, capture_output=True, text=True)
+
+    oov_lines = [l for l in result.stderr.splitlines() if l.startswith("WARNING: OOV")]
+    other_lines = [l for l in result.stderr.splitlines() if not l.startswith("WARNING: OOV")]
+    if oov_lines:
+        print(f"    [VecMap] {len(oov_lines)} OOV lexicon entries skipped (not in embedding vocab)")
+    for line in other_lines:
+        print(f"    [VecMap] {line}")
 
     return load_txt_embeddings(src_out), load_txt_embeddings(tgt_out)
