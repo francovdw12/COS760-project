@@ -3,11 +3,8 @@
 banto_ner_env/
 __pycache__/
 
-# Ignore raw and processed data
-/data/
-*.txt
-!requirement.txt
-*.csv
+
+
 *.json
 
 # Ignore model weights and embeddings
