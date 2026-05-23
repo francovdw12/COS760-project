@@ -33,7 +33,7 @@ def train_fasttext(corpus_path, output_path, dim=100):
         wordNgrams=1,
         minn=3,      # subword min - helps agglutinative morphology
         maxn=6,      # subword max
-        epoch=10,
+        epoch=20,
         thread=4,
     )
     model.save_model(output_path)

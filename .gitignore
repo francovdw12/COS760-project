@@ -13,3 +13,10 @@ __pycache__/
 *.pth
 
 .venv/
+
+# Data and large outputs
+outputs/*/*.txt
+outputs/*/*.pt
+embeddings/*.txt
+embeddings/*.bin
+
