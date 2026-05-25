@@ -1,12 +1,8 @@
 from __future__ import annotations
 
-
-from pathlib import Path
 from typing import Dict, List, Tuple
 
-
 import numpy as np
-
 
 from alignment.CCA import CCAAligner as _CCAAligner
 from lexicon import build_anchor_matrices
@@ -27,15 +23,16 @@ def _l2_rows(M: np.ndarray) -> np.ndarray:
 class CCAWrapper(AlignerBase):
 
     def __init__(self, lang: str, fraction: float, force: bool = False,
-    n_components: int = 100):
+                 n_components: int = 100):
         self.lang = lang
         self.fraction = fraction
-        self.force = force # forcing recomputation of existing artefact
+        self.force = force
         self.n_components = n_components
         self._aligner: _CCAAligner | None = None
-        self._R: np.ndarray | None = None # regression back to the english space
+        self._R: np.ndarray | None = None
 
-    def fit(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs):
+    def fit(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs,
+            en_matrix_orig=None):
         from config import get_alignment_artifact_path
 
         artifact = get_alignment_artifact_path(self.lang, self.fraction, "CCA")
@@ -57,15 +54,16 @@ class CCAWrapper(AlignerBase):
                 f"Not enough anchor pairs for {self.lang} at fraction={self.fraction}"
             )
 
-        # 100 -- tune this cap?
         n_components = min(self.n_components, X_src.shape[0], X_src.shape[1], X_tgt.shape[1])
-        print(f"CCA components used = {n_components}\n")
+        print(f"CCA components used = {n_components}")
         aligner = _CCAAligner(n_components=n_components)
         aligner.fit(X_src, X_tgt)
 
-        # Normalisation collapses magnitude variation that lstsq needs
-        Z_en_full = (en_matrix @ aligner.W_tgt).astype(np.float32)
-        R = np.linalg.lstsq(Z_en_full, en_matrix, rcond=None)[0].astype(np.float32)
+        # Fit R on original vocabulary only — OOV supplemented vectors are noisy
+        # and degrade the regression. Mirrors RQ1 implementation.
+        en_for_r = en_matrix_orig if en_matrix_orig is not None else en_matrix
+        Z_en = (en_for_r @ aligner.W_tgt).astype(np.float32)
+        R = np.linalg.lstsq(Z_en, en_for_r, rcond=None)[0].astype(np.float32)
 
         artifact.parent.mkdir(parents=True, exist_ok=True)
         np.savez(
@@ -85,12 +83,13 @@ class CCAWrapper(AlignerBase):
         Z = (vecs @ self._aligner.W_src).astype(np.float32)
         Y = (Z @ self._R).astype(np.float32)
         return _l2_rows(Y)
-        
+
     def alignment_quality(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs):
         X_src, X_tgt = build_anchor_matrices(
             lexicon_pairs, src_words, src_matrix, en_words, en_matrix
         )
-        projected = self._aligner.transform_src(src_matrix)
+        # Raw projection — normalisation collapses magnitude variation
+        projected = (src_matrix @ self._aligner.W_src).astype(np.float32)
         projected_in_en = _l2_rows((projected @ self._R).astype(np.float32))
 
         bli = bli_precision_at_k(

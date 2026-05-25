@@ -29,7 +29,8 @@ class VecMapWrapper(AlignerBase):
         self._aligned_dict: Dict[str, np.ndarray] = {}
         self._stats: Dict[str, int] = {"hit": 0, "total": 0}
 
-    def fit(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs):
+    def fit(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs,
+            en_matrix_orig=None):
         from config import OUTPUTS_ROOT, get_fraction_text_embeddings_path, get_text_embeddings_path, ENGLISH
 
         src_txt = get_fraction_text_embeddings_path(self.lang, self.fraction)

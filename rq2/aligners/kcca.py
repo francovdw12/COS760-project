@@ -4,7 +4,6 @@ from typing import Dict, List, Tuple
 
 import numpy as np
 
-
 from alignment.KCCA import KCCAAligner as _KCCAAligner
 from lexicon import build_anchor_matrices
 from rq2.diagnostics.bli import bli_precision_at_k
@@ -27,8 +26,8 @@ class KCCAWrapper(AlignerBase):
         self,
         lang: str,
         fraction: float,
-        gamma: float = 0.1, # controls localization of RBF similarity
-        reg: float = 1e-3, 
+        gamma: float = 0.1,
+        reg: float = 1e-3,
         max_anchors: int = 1000,
         force: bool = False,
         n_components: int = 50,
@@ -39,11 +38,12 @@ class KCCAWrapper(AlignerBase):
         self.reg = reg
         self.max_anchors = max_anchors
         self.force = force
+        self.n_components = n_components
         self._aligner: _KCCAAligner | None = None
         self._R: np.ndarray | None = None
-        self.n_components = n_components
 
-    def fit(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs):
+    def fit(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs,
+            en_matrix_orig=None):
         from config import get_alignment_artifact_path
 
         artifact = get_alignment_artifact_path(self.lang, self.fraction, "KCCA")
@@ -76,9 +76,13 @@ class KCCAWrapper(AlignerBase):
         aligner = _KCCAAligner(n_components=n_components, gamma=self.gamma, reg=self.reg)
         aligner.fit(X_src[:n], X_tgt[:n])
 
-        # Use raw KCCA projections without L2 normalisation
+        # Fit R on original vocabulary anchor set only — avoids OOV noise
+        en_for_r = en_matrix_orig if en_matrix_orig is not None else X_tgt[:n]
         Z_tgt = (aligner._get_ky_train() @ aligner.beta).astype(np.float32)
-        R = np.linalg.lstsq(Z_tgt, X_tgt[:n], rcond=None)[0].astype(np.float32)
+        # R maps from KCCA kernel space back to English embedding space
+        # Use the anchor-sized slice of en_for_r to match Z_tgt dimensions
+        en_for_r_anchors = en_for_r[:n] if len(en_for_r) >= n else en_for_r
+        R = np.linalg.lstsq(Z_tgt, en_for_r_anchors, rcond=None)[0].astype(np.float32)
 
         artifact.parent.mkdir(parents=True, exist_ok=True)
         np.savez(
@@ -116,4 +120,3 @@ class KCCAWrapper(AlignerBase):
         )
         cka = compute_cka(X_src, X_tgt) if X_src.shape[0] >= 10 else float("nan")
         return {"bli_p5": bli, "cka": cka, "n_anchors": len(X_src)}
-        

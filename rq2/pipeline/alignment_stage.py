@@ -19,12 +19,7 @@ def make_aligner(
     lex_path: Path,
     config: RQ2Config,
 ) -> AlignerBase:
-    """Alignment Factory — returns the correct AlignerBase 
-    subclass for a given method.
-
-    Accepts the full RQ2Config so each wrapper can read its own
-    hyperparameters without the factory needing to know about them.
-    """
+    """Factory — returns the correct AlignerBase subclass for a given method."""
     if method == "CCA":
         return CCAWrapper(
             lang=lang,
@@ -59,13 +54,14 @@ def fit_aligner(
     en_words: List[str],
     en_matrix: np.ndarray,
     lexicon_pairs: List[Tuple[str, str]],
+    en_matrix_orig: np.ndarray | None = None,
 ) -> AlignerBase:
     """Stage 1 — fit the aligner on source and English anchor matrices.
 
-    Separated from make_aligner so that construction and fitting
-    are explicit distinct steps in the experiment runner.
+    en_matrix_orig: pre-supplementation English matrix passed through to fit()
+    so that R is learned on reliable original vocabulary vectors only.
     """
-    aligner.fit(src_words, src_matrix, en_words, en_matrix, lexicon_pairs)
+    aligner.fit(src_words, src_matrix, en_words, en_matrix, lexicon_pairs, en_matrix_orig)
     return aligner
 
 
@@ -80,9 +76,8 @@ def run_diagnostics(
 ) -> Dict:
     """Diagnostic layer — compute BLI p@5 and CKA independently of NER.
 
-    Returns a dict with bli_p5, cka, and n_anchors.
     Falls back to NaN values if diagnostics fail so the pipeline
-    continues should a single language/fraction combination fail.
+    continues rather than crashing on a single language or fraction.
     """
     try:
         diag = aligner.alignment_quality(

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-
 import json
 from pathlib import Path
 from typing import Dict, List
@@ -22,16 +21,20 @@ from config import (
     get_subset_corpus_path,
     get_text_embeddings_path,
 )
-from lexicon import load_lexicon
+from lexicon import load_lexicon, split_lexicon
 from rq2.corpus_subsets import ensure_language_subsets
 from rq2.zero_shot_eval import load_masakhaner_split, Sentence
 from rq2.pipeline.config import RQ2Config
-from rq2.pipeline.fasttext_stage import ensure_fasttext_model, load_source_embeddings
+from rq2.pipeline.fasttext_stage import (
+    ensure_fasttext_model,
+    load_source_embeddings,
+    supplement_english_embeddings,
+    supplement_source_embeddings,
+)
 from rq2.pipeline.ner_stage import load_ner_model, validate_ner_model, entity_types_from_tagset
 from rq2.pipeline.alignment_stage import make_aligner, fit_aligner, run_diagnostics
 from rq2.pipeline.evaluation_stage import run_evaluation, assemble_result_row
 
-SEP_CHAR_NUM = 100 # separation characters for serial results display
 
 def run_rq2(config: RQ2Config) -> None:
     """Main pipeline entry point.
@@ -41,18 +44,18 @@ def run_rq2(config: RQ2Config) -> None:
     """
     results: List[Dict] = []
 
-    # Output directories
+    # --- Output directories ---
     results_dir = Path(RESULTS_ROOT) / "rq2" / config.run_name
     results_dir.mkdir(parents=True, exist_ok=True)
     Path(OUTPUTS_ROOT).mkdir(parents=True, exist_ok=True)
 
-    # Configuration parameters serialization to save hyperparameters alongside results
+    # Config serialisation — saves hyperparameters alongside results
     config_path = results_dir / "config_params.json"
     with open(config_path, "w") as f:
         json.dump(vars(config), f, indent=2)
     print(f"[RQ2] config saved to {config_path}")
 
-    # English FastText embeddings
+    # --- Stage: English FastText embeddings ---
     en_corpus = Path(get_corpus_path(ENGLISH))
     en_bin = get_embeddings_path(ENGLISH)
     en_txt = get_text_embeddings_path(ENGLISH)
@@ -62,7 +65,7 @@ def run_rq2(config: RQ2Config) -> None:
         print(f"[RQ2] {e}")
         return
 
-    # English NER model (trained once and frozen) 
+    # --- Stage: English NER model (trained once, frozen) ---
     try:
         ner_model, _tag_to_idx, idx_to_tag = load_ner_model(
             force=config.force,
@@ -76,34 +79,36 @@ def run_rq2(config: RQ2Config) -> None:
     allowed_types = entity_types_from_tagset(idx_to_tag)
     print(f"[NER] tag types: {allowed_types}")
 
-    # English NER validation
-    en_baseline_f1 = float("nan") # default when baseline evaluatio is not run
+    # --- Stage: English NER validation ---
+    en_baseline_f1 = float("nan")
     if config.validate_ner:
         val_metrics = validate_ner_model(
-            ner_model,
-            idx_to_tag,
-            allowed_types,
+            ner_model, idx_to_tag, allowed_types,
             device=config.device,
         )
         en_baseline_f1 = val_metrics.get("f1", float("nan"))
 
-        en_words, en_matrix = load_source_embeddings(en_bin)
+    # Load original English embeddings BEFORE supplementation
+    # en_matrix_orig is used to fit R — reliable vectors only
+    en_words_orig, en_matrix_orig = load_source_embeddings(en_bin)
 
-        # Collect all English target words from all language lexicons for supplementation
-        all_en_targets = []
-        for _lang in config.langs:
-            _lex = get_seed_lexicon_path(_lang)
-            if _lex and Path(_lex).exists():
-                all_en_targets.extend(load_lexicon(str(_lex)))
+    # Collect all English target words from all language lexicons
+    all_en_targets = []
+    for _lang in config.langs:
+        _lex = get_seed_lexicon_path(_lang)
+        if _lex and Path(_lex).exists():
+            all_en_targets.extend(load_lexicon(str(_lex)))
 
-        from rq2.pipeline.fasttext_stage import supplement_english_embeddings
-        en_words, en_matrix = supplement_english_embeddings(en_words, en_matrix, all_en_targets)
-        print(f"[RQ2] English vocab after supplementation: {len(en_words)} words")
+    # Supplemented English vocabulary — used for anchor building
+    en_words, en_matrix = supplement_english_embeddings(
+        en_words_orig, en_matrix_orig, all_en_targets
+    )
+    print(f"[RQ2] English vocab after supplementation: {len(en_words)} words")
 
-    # Language evaluation loop
+    # --- Language loop ---
     for lang in config.langs:
         display = get_display_name(lang)
-        print(f"\n{'=' * SEP_CHAR_NUM}\nRQ2 language: {display} ({lang})\n{'=' * SEP_CHAR_NUM}")
+        print(f"\n{'=' * 100}\nRQ2 language: {display} ({lang})\n{'=' * 100}")
 
         lex_path = get_seed_lexicon_path(lang)
         if lex_path is None or not lex_path.exists():
@@ -114,6 +119,10 @@ def run_rq2(config: RQ2Config) -> None:
         if not lexicon_pairs:
             print(f"[RQ2] Empty seed lexicon for {lang} (skipping)")
             continue
+
+        # Split lexicon — train pairs for fitting, eval pairs for BLI diagnostic
+        train_pairs, eval_pairs = split_lexicon(lexicon_pairs, held_out=1000, seed=42)
+        print(f"[RQ2] Lexicon split: {len(train_pairs)} train / {len(eval_pairs)} eval pairs")
 
         ner_dir = get_ner_path(lang)
         if ner_dir is None or not Path(ner_dir).exists():
@@ -140,7 +149,7 @@ def run_rq2(config: RQ2Config) -> None:
 
         import fasttext
 
-        # Data fraction (portion) loop
+        # --- Fraction loop ---
         for fraction in config.fractions:
             subset_corpus = get_subset_corpus_path(lang, fraction)
             if not subset_corpus.exists():
@@ -151,39 +160,39 @@ def run_rq2(config: RQ2Config) -> None:
             src_txt = get_fraction_text_embeddings_path(lang, fraction)
             ensure_fasttext_model(subset_corpus, src_bin, src_txt)
 
-            src_words, src_matrix = load_source_embeddings(src_bin)
+            src_words_orig, src_matrix_orig = load_source_embeddings(src_bin)
             ft_src = fasttext.load_model(str(src_bin))
 
-            from rq2.pipeline.fasttext_stage import supplement_source_embeddings
+            # Supplement source vocabulary with OOV lexicon words
             src_words, src_matrix = supplement_source_embeddings(
-                lang, src_words, src_matrix, lexicon_pairs
+                lang, src_words_orig, src_matrix_orig, lexicon_pairs
             )
             print(f"[RQ2] {lang} vocab after supplementation: {len(src_words)} words")
-            ft_src = fasttext.load_model(str(src_bin))
 
-            # Method loop
+            # --- Method loop ---
             for method in config.methods:
                 print(f"\n[RQ2] lang={lang} fraction={fraction:.2f} method={method}")
 
-                # Embeddings Alignment
+                # Stage 1 — Alignment
                 aligner = make_aligner(method, lang, fraction, lex_path, config)
                 try:
                     fit_aligner(
                         aligner, src_words, src_matrix,
-                        en_words, en_matrix, lexicon_pairs
+                        en_words, en_matrix, train_pairs,
+                        en_matrix_orig=en_matrix_orig,
                     )
                 except Exception as e:
                     print(f"  [{method}] fit failed: {e}")
                     continue
 
-                # Embeddings alignment diagnostics
+                # Diagnostic layer
                 diag = run_diagnostics(
                     aligner, src_words, src_matrix,
-                    en_words, en_matrix, lexicon_pairs,
+                    en_words, en_matrix, eval_pairs,
                     method,
                 )
 
-                # NER task performance evaluation
+                # Stage 3 — Evaluation
                 metrics = run_evaluation(
                     ner_model, idx_to_tag, eval_sents,
                     aligner=aligner,

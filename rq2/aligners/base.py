@@ -16,13 +16,19 @@ class AlignerBase(ABC):
         en_words: List[str],
         en_matrix: np.ndarray,
         lexicon_pairs: List[Tuple[str, str]],
-
-    ) -> "AlignerBase": """Learn the mapping from source language space into English embedding space."""
+        en_matrix_orig: np.ndarray | None = None,
+    ) -> "AlignerBase":
+        """Learn the mapping from source language space into English embedding space.
+        
+        en_matrix_orig: pre-supplementation English matrix. Used to fit R on
+        reliable vocabulary vectors only, avoiding noise from OOV subword vectors.
+        """
+        ...
 
     @abstractmethod
     def project(self, tokens: List[str], ft_model) -> np.ndarray:
         """Map a list of tokens to a (n_tokens, dim) float32 array in English embedding space."""
-
+        ...
 
     @abstractmethod
     def alignment_quality(
@@ -33,4 +39,5 @@ class AlignerBase(ABC):
         en_matrix: np.ndarray,
         lexicon_pairs: List[Tuple[str, str]],
     ) -> Dict:
-        """Return diagnostic metrics — BLI p@1, CKA, anchor count — independently of NER."""
+        """Return diagnostic metrics — BLI p@5, CKA, anchor count — independently of NER."""
+        ...

@@ -23,3 +23,9 @@ embeddings/*.bin
 
 embeddings/aligned/
 data/subsets/
+
+final-report/*.log
+final-report/*.synctex*
+final-report/*.aux
+final-report/*.out
+final-report/*.pdf

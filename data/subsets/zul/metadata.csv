@@ -1,7 +1,0 @@
-lang,fraction,subset_path,total_lines,total_tokens,selected_lines,selected_tokens,seed
-zul,1.0,/app/data/subsets/zul/f100.txt,75630,1492100,75630,1492100,42
-zul,0.75,/app/data/subsets/zul/f075.txt,75630,1492100,56781,1119082,42
-zul,0.5,/app/data/subsets/zul/f050.txt,75630,1492100,37926,746050,42
-zul,0.25,/app/data/subsets/zul/f025.txt,75630,1492100,19019,373038,42
-zul,0.1,/app/data/subsets/zul/f010.txt,75630,1492100,7659,149216,42
-zul,0.05,/app/data/subsets/zul/f005.txt,75630,1492100,3821,74639,42
