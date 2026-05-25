@@ -6,15 +6,23 @@ the advantage of non-linear methods differ by morphology?
 
 The pipeline runs in six phases:
   1. English embeddings (load/train FastText, then OOV-supplement the vocab).
-  2. English NER model (load/train a BiLSTM-CRF on CoNLL-2003, once).
+  2. CoNLL-2003 root located; per-method NER models are trained lazily in Phase 5.
   3. Per language: lexicon + source embeddings + pre-alignment CKA + anchors.
-  4. Per method (CCA, KCCA, VecMap): align, then build a NER embedder.
-  5. Evaluation: intrinsic (P@1, P@5, MCS, CKA) + extrinsic (zero-shot NER F1).
+  4. Per method (CCA, KCCA, VecMap): align, build paired (Bantu, English)
+     embedders that share the same alignment + bridge pipeline.
+  5. Evaluation: intrinsic (P@1, P@5, MCS, CKA) + extrinsic zero-shot NER F1
+     using a BiLSTM-CRF trained ONCE per (language, method) on English vectors
+     pushed through the same method-specific embedder.
   6. Export every (language, method) row to results/rq1_results.csv.
 
-Key design choice: aligners are *trained* on vocabularies supplemented with
-FastText subword vectors (more anchor pairs), but intrinsic metrics are
-*evaluated* on the original vocabulary only, so CCA/KCCA/VecMap stay comparable.
+Key design choices:
+- Aligners are trained on vocabularies supplemented with FastText subword
+  vectors, but intrinsic metrics are evaluated on the original vocabulary only
+  so CCA/KCCA/VecMap stay comparable.
+- For CCA/KCCA the "bridge" R that maps the canonical space back to raw
+  English is fit on the lexicon anchor pairs themselves (X_tgt), not on the
+  full English vocabulary.
+- Per-method NER models live at outputs/ner/bilstm_crf_{lang}_{method}.pt.
 """
 
 import numpy as np
@@ -132,31 +140,24 @@ def run_rq1():
         print(f"English vocab supplemented: {n_en_orig} → {len(en_words)} (+{n_en_added} OOV from lexicons)")
 
     # ------------------------------------------------------------------
-    # PHASE 2 — English NER model (train once, then reuse for every language)
+    # PHASE 2 — English NER model is now trained PER (language, method).
     # ------------------------------------------------------------------
-    # Cached checkpoint avoids retraining the BiLSTM-CRF on every run.
-    ner_ckpt = Path(OUTPUTS_ROOT) / "ner" / "bilstm_crf_conll2003.pt"
-    try:
-        ner_model, _tag_to_idx, idx_to_tag = train_or_load_english_ner_model(
-            conll_root=get_conll2003_root(),
-            english_fasttext_bin=get_embeddings_path(ENGLISH),
-            out_path=ner_ckpt,
-            embedding_dim=EMBEDDING_DIM,
-            epochs=5,
-            batch_size=16,
-            seed=42,
-            force_retrain=False,
-            device="cpu",
-        )
-        # Entity types the model knows — needed to map MasakhaNER tags into its space.
-        allowed_types = _entity_types_from_tagset(idx_to_tag)
-        print(f"[NER] model ready — tag types: {allowed_types}")
-    except FileNotFoundError as e:
-        # Missing CoNLL-2003 → skip NER F1 but still compute intrinsic metrics.
-        print(f"[RQ1] NER model unavailable ({e}); NER_F1 will be skipped.")
-        ner_model = None
-        idx_to_tag = None
-        allowed_types = []
+    # Each alignment method induces a slightly different "English space" once a
+    # Bantu language is projected into it. To keep train- and inference-time
+    # vector distributions consistent, we train one BiLSTM-CRF for every
+    # (language, method) combination, each using a method-specific English
+    # embedder that mimics the alignment + bridge pipeline used at inference.
+    # The first such training also tells us the tag vocabulary used downstream.
+    ner_conll_root = get_conll2003_root()
+    if not ner_conll_root.exists():
+        print(f"[RQ1] NER model unavailable (missing CoNLL-2003 at {ner_conll_root}); NER_F1 will be skipped.")
+        ner_conll_root = None
+
+    # Load FastText models once — used by the per-method embedders to do
+    # subword inference at inference time (so MasakhaNER OOV tokens still get
+    # a real vector instead of collapsing to zero).
+    import fasttext
+    ft_en_model = fasttext.load_model(str(get_embeddings_path(ENGLISH)))
 
     # ------------------------------------------------------------------
     # PHASE 3 — per-language loop
@@ -221,7 +222,7 @@ def run_rq1():
 
         # 3e — load MasakhaNER test sentences once per language (for NER F1).
         ner_sents = None
-        if ner_model is not None:
+        if ner_conll_root is not None:
             ner_dir = get_ner_path(lang)
             if ner_dir is not None and Path(ner_dir).exists():
                 try:
@@ -230,34 +231,51 @@ def run_rq1():
                 except Exception as e:
                     print(f"  [NER] Could not load test data for {lang}: {e}")
 
-        def make_embedder(lookup, dim):
-            """Build a tokens→matrix function for CCA/KCCA from a {word: vector} map.
+        # 3f — load the source-language FastText model once for subword inference
+        # in the per-method embedders. This lets MasakhaNER OOV tokens still get
+        # a real vector instead of collapsing to zero.
+        ft_src_model = fasttext.load_model(str(get_embeddings_path(lang)))
 
-            Used by the NER model: each Bantu token is looked up (case-insensitively)
-            in the aligned source space; unknown tokens get a zero vector.
-            """
-            def embedder(tokens):
-                zero = np.zeros(dim, dtype=np.float32)
-                vecs = []
-                for t in tokens:
-                    v = lookup.get(t)
-                    if v is None:
-                        v = lookup.get(t.lower())
-                    if v is not None:
-                        v = v.astype(np.float32)
-                        norm = np.linalg.norm(v)
-                        v = v / (norm + 1e-8) if norm > 1e-8 else v
-                    else:
-                        v = zero
-                    vecs.append(v)
-                return np.stack(vecs)
-            return embedder
+        def _align_via_cca_kcca(aligner, R, ft_model, tokens, dim):
+            """tokens -> FT subword vec -> aligner.transform_src -> R-bridge -> L2."""
+            zero = np.zeros(dim, dtype=np.float32)
+            raw = []
+            for tok in tokens:
+                v = ft_model.get_word_vector(tok)
+                norm = np.linalg.norm(v)
+                raw.append((v / norm).astype(np.float32) if norm > 1e-8 else zero)
+            X = np.stack(raw, axis=0)
+            Z = aligner.transform_src(X)
+            Y = (Z @ R).astype(np.float32)
+            norms = np.linalg.norm(Y, axis=1, keepdims=True)
+            return (Y / np.maximum(norms, 1e-8)).astype(np.float32)
+
+        def _align_english_via_cca_kcca(aligner, R, ft_model, tokens, dim):
+            """English-side version: project English through the target rotation,
+            then through the same R bridge — keeps train/inference spaces aligned."""
+            zero = np.zeros(dim, dtype=np.float32)
+            raw = []
+            for tok in tokens:
+                v = ft_model.get_word_vector(tok)
+                norm = np.linalg.norm(v)
+                raw.append((v / norm).astype(np.float32) if norm > 1e-8 else zero)
+            X = np.stack(raw, axis=0)
+            Z = aligner.transform_tgt(X)
+            Y = (Z @ R).astype(np.float32)
+            norms = np.linalg.norm(Y, axis=1, keepdims=True)
+            return (Y / np.maximum(norms, 1e-8)).astype(np.float32)
 
         # --------------------------------------------------------------
         # PHASE 4 — per-method alignment + NER embedder construction
         # --------------------------------------------------------------
         for method in ["CCA", "KCCA", "VecMap"]:
             print(f"\n  -> Method: {method}")
+
+            # `bantu_embedder` and `english_embedder` end up assigned inside each
+            # branch and define the consistent train/inference embedding pipeline
+            # passed to the NER model below.
+            bantu_embedder = None
+            english_embedder = None
 
             if method == "CCA":
                 # Cap components so the system stays well-determined: the K/p >= 10
@@ -271,18 +289,18 @@ def run_rq1():
                 src_aligned = aligner.transform_src(src_matrix_orig)
                 tgt_aligned = aligner.transform_tgt(en_matrix_orig)
 
-                # NER embedder: project FULL vocab (includes OOV supplement) so
-                # rare NER tokens still get an aligned vector. CCA maps into a
-                # p-dim canonical space; the BiLSTM expects 100-dim English space,
-                # so R is a least-squares "bridge" back into the English space.
-                src_aligned_full = aligner.transform_src(src_matrix)
-                tgt_aligned_full = aligner.transform_tgt(en_matrix)
-                R = np.linalg.lstsq(tgt_aligned_full, en_matrix, rcond=None)[0].astype(np.float32)
-                src_aligned_en = (src_aligned_full @ R)
-                norms = np.linalg.norm(src_aligned_en, axis=1, keepdims=True)
-                src_aligned_en = (src_aligned_en / np.maximum(norms, 1e-8)).astype(np.float32)
-                src_lookup = {w: src_aligned_en[i] for i, w in enumerate(src_words)}
-                embedder = make_embedder(src_lookup, en_matrix_orig.shape[1])
+                # Bug 3 fix: fit the bridge R on the anchor pairs themselves
+                # (X_tgt is the English side of the lexicon). Previously R was
+                # fit against the FULL supplemented English vocab, which yields
+                # a noisy regression unrelated to the alignment objective.
+                Z_tgt_anchors = aligner.transform_tgt(X_tgt)
+                R = np.linalg.lstsq(Z_tgt_anchors, X_tgt, rcond=None)[0].astype(np.float32)
+
+                dim_en = en_matrix_orig.shape[1]
+                bantu_embedder = lambda toks, _a=aligner, _R=R, _d=dim_en: \
+                    _align_via_cca_kcca(_a, _R, ft_src_model, toks, _d)
+                english_embedder = lambda toks, _a=aligner, _R=R, _d=dim_en: \
+                    _align_english_via_cca_kcca(_a, _R, ft_en_model, toks, _d)
 
             elif method == "KCCA":
                 # KCCA is O(K^2) in the number of anchors — cap K to bound cost.
@@ -294,16 +312,17 @@ def run_rq1():
                 src_aligned = aligner.transform_src(src_matrix_orig)
                 tgt_aligned = aligner.transform_tgt(en_matrix_orig)
 
-                # NER embedder: full vocab projection, then regress back to the
-                # English space (same idea as CCA, fit on the capped anchor set).
-                src_aligned_full = aligner.transform_src(src_matrix)
-                Z_tgt_reg = aligner.transform_tgt(en_matrix_orig[:max_anchors])
-                R = np.linalg.lstsq(Z_tgt_reg, en_matrix_orig[:max_anchors], rcond=None)[0].astype(np.float32)
-                src_aligned_en = (src_aligned_full @ R)
-                norms = np.linalg.norm(src_aligned_en, axis=1, keepdims=True)
-                src_aligned_en = (src_aligned_en / np.maximum(norms, 1e-8)).astype(np.float32)
-                src_lookup = {w: src_aligned_en[i] for i, w in enumerate(src_words)}
-                embedder = make_embedder(src_lookup, en_matrix_orig.shape[1])
+                # Bug 4 fix: regress on the actual ANCHOR-pair English rows
+                # (matching what KCCA was fit on), not an arbitrary prefix of
+                # the full English vocab.
+                Z_tgt_anchors = aligner.transform_tgt(X_tgt[:max_anchors])
+                R = np.linalg.lstsq(Z_tgt_anchors, X_tgt[:max_anchors], rcond=None)[0].astype(np.float32)
+
+                dim_en = en_matrix_orig.shape[1]
+                bantu_embedder = lambda toks, _a=aligner, _R=R, _d=dim_en: \
+                    _align_via_cca_kcca(_a, _R, ft_src_model, toks, _d)
+                english_embedder = lambda toks, _a=aligner, _R=R, _d=dim_en: \
+                    _align_english_via_cca_kcca(_a, _R, ft_en_model, toks, _d)
 
             elif method == "VecMap":
                 if not vecmap_ready:
@@ -328,28 +347,49 @@ def run_rq1():
                     for i, w in enumerate(en_words_orig)
                 ])
 
-                def make_vecmap_embedder(adict, dim):
-                    """NER embedder for VecMap: dictionary lookup, zero vector if OOV.
+                dim_en = en_matrix_orig.shape[1]
 
-                    Note: named entities are usually OOV here, so they collapse to
-                    the zero vector — a known limitation of dictionary-style mapping.
-                    """
-                    def embedder(tokens):
-                        zero = np.zeros(dim, dtype=np.float32)
-                        vecs = []
-                        for tok in tokens:
-                            v = adict.get(tok)
-                            if v is None:
-                                v = adict.get(tok.lower())
-                            if v is not None:
-                                v = v.astype(np.float32)
-                                v = v / (np.linalg.norm(v) + 1e-8)
-                            else:
-                                v = zero
-                            vecs.append(v)
-                        return np.stack(vecs)
-                    return embedder
-                embedder = make_vecmap_embedder(aligned_src_dict, en_matrix_orig.shape[1])
+                def _vm_lookup(adict, tok, dim):
+                    v = adict.get(tok)
+                    if v is None:
+                        v = adict.get(tok.lower())
+                    if v is None:
+                        return None
+                    v = v.astype(np.float32)
+                    norm = np.linalg.norm(v)
+                    return (v / norm).astype(np.float32) if norm > 1e-8 else np.zeros(dim, dtype=np.float32)
+
+                def _vm_bantu_embedder(tokens, _d=dim_en):
+                    """Bantu embedder: VecMap-aligned dict, else raw FT subword."""
+                    zero = np.zeros(_d, dtype=np.float32)
+                    vecs = []
+                    for tok in tokens:
+                        v = _vm_lookup(aligned_src_dict, tok, _d)
+                        if v is None:
+                            raw = ft_src_model.get_word_vector(tok)
+                            norm = np.linalg.norm(raw)
+                            v = (raw / norm).astype(np.float32) if norm > 1e-8 else zero
+                        vecs.append(v)
+                    return np.stack(vecs)
+
+                def _vm_english_embedder(tokens, _d=dim_en):
+                    """English embedder: VecMap-aligned dict, else raw FT subword.
+                    Training the NER on these vectors keeps the model's input
+                    distribution consistent with the VecMap-aligned Bantu vectors
+                    it will see at inference time."""
+                    zero = np.zeros(_d, dtype=np.float32)
+                    vecs = []
+                    for tok in tokens:
+                        v = _vm_lookup(aligned_tgt_dict, tok, _d)
+                        if v is None:
+                            raw = ft_en_model.get_word_vector(tok)
+                            norm = np.linalg.norm(raw)
+                            v = (raw / norm).astype(np.float32) if norm > 1e-8 else zero
+                        vecs.append(v)
+                    return np.stack(vecs)
+
+                bantu_embedder = _vm_bantu_embedder
+                english_embedder = _vm_english_embedder
 
             # ----------------------------------------------------------
             # PHASE 5 — evaluation
@@ -360,21 +400,40 @@ def run_rq1():
             mcs = mean_cosine_similarity(src_aligned, tgt_aligned, test_pairs, src_idx_orig, en_idx_orig)
             cka_after = linear_cka(src_aligned[:n_cka], tgt_aligned[:n_cka])
 
-            # Extrinsic metric: zero-shot NER F1 (skipped if NER model/data absent).
+            # Bug 5 fix: train one NER per (language, method) using the
+            # method-specific English embedder so the BiLSTM-CRF sees the same
+            # vector distribution at train- and inference-time.
             ner_f1 = None
-            if ner_model is not None and ner_sents is not None:
+            if ner_conll_root is not None and ner_sents is not None and english_embedder is not None:
+                ner_ckpt = Path(OUTPUTS_ROOT) / "ner" / f"bilstm_crf_{lang}_{method}.pt"
                 try:
+                    ner_model, _tag_to_idx, idx_to_tag = train_or_load_english_ner_model(
+                        conll_root=ner_conll_root,
+                        english_fasttext_bin=get_embeddings_path(ENGLISH),
+                        out_path=ner_ckpt,
+                        embedding_dim=EMBEDDING_DIM,
+                        epochs=5,
+                        batch_size=16,
+                        seed=42,
+                        force_retrain=False,
+                        device="cpu",
+                        embedder=english_embedder,
+                    )
+                    allowed_types = _entity_types_from_tagset(idx_to_tag)
                     metrics = evaluate_sentences(
                         ner_model, idx_to_tag, ner_sents,
-                        embedder=embedder,
+                        embedder=bantu_embedder,
                         device="cpu",
                         allowed_entity_types=allowed_types,
                         unknown_type_strategy="to_misc",  # map unknown types (e.g. DATE) to MISC
                     )
                     ner_f1 = round(metrics["f1"], 4)
                     print(f"    P@1={p1:.3f}  P@5={p5:.3f}  MCS={mcs:.3f}  CKA_after={cka_after:.3f}  NER_F1={ner_f1:.4f}")
+                except FileNotFoundError as e:
+                    print(f"    [NER] training data unavailable: {e}")
+                    print(f"    P@1={p1:.3f}  P@5={p5:.3f}  MCS={mcs:.3f}  CKA_after={cka_after:.3f}")
                 except Exception as e:
-                    print(f"    [NER] evaluation failed: {e}")
+                    print(f"    [NER] training/evaluation failed: {e}")
                     print(f"    P@1={p1:.3f}  P@5={p5:.3f}  MCS={mcs:.3f}  CKA_after={cka_after:.3f}")
             else:
                 print(f"    P@1={p1:.3f}  P@5={p5:.3f}  MCS={mcs:.3f}  CKA_after={cka_after:.3f}")
