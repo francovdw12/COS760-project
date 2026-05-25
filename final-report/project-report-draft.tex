@@ -1,377 +1,300 @@
+% ============================================================
+% WHAT IS THIS FILE?
+% This is a LaTeX file — it is the "source" of your document,
+% just like HTML is the source of a webpage.
+% You compile it (press the green Play/Build button in your
+% LaTeX editor, e.g. TeXstudio or Overleaf) to produce the PDF.
+%
+% COMMENTS: Any line that starts with % is a comment.
+%   Comments do NOT appear in the final PDF.
+%   Use them to leave notes for yourself.
+%
+% HOW TO ADD A NEW LINE:
+%   - Leave a BLANK LINE between text to start a new paragraph
+%     (just like pressing Enter twice in Word).
+%   - Use \\ at the end of a line to force a line break
+%     (like Shift+Enter in Word — keeps you in the same paragraph).
+%
+% HOW TO ADD BOLD / ITALIC:
+%   Bold:   \textbf{your text here}
+%   Italic: \textit{your text here}
+% ============================================================
+
 \documentclass[11pt]{article}
 
-% Change "review" to "final" to generate the final (sometimes called camera-ready) version.
-% Change to "preprint" to generate a non-anonymous version with page numbers.
-% \usepackage[review]{acl2020} % Commented out because acl2020.sty is missing
-
-% Standard package includes
+% --- Font and encoding packages (leave these as-is) ---
 \usepackage{times}
 \usepackage{latexsym}
-
-% For proper rendering and hyphenation of words containing Latin characters (including in bib files)
 \usepackage[T1]{fontenc}
-% For Vietnamese characters
-% \usepackage[T5]{fontenc}
-% See https://www.latex-project.org/help/documentation/encguide.pdf for other character sets
-
-% This assumes your files are encoded as UTF8
 \usepackage[utf8]{inputenc}
-
-% This is not strictly necessary, and may be commented out,
-% but it will improve the layout of the manuscript,
-% and will typically save some space.
 \usepackage{microtype}
 
-% This is also not strictly necessary, and may be commented out.
-% However, it will improve the aesthetics of text in
-% the typewriter font.
-\usepackage{inconsolata}
-
-%Including images in your LaTeX document requires adding
-%additional package(s)
+% --- Package for inserting images ---
 \usepackage{graphicx}
 
-% If the title and author information does not fit in the area allocated, uncomment the following
-%
-%\setlength\titlebox{<dim>}
-%
-% and set <dim> to something 5cm or larger.
+% --- Package for clickable hyperlinks and references ---
+\usepackage{hyperref}
 
-\title{Instructions for *ACL Proceedings}
+% --- Package for citation styles (author, year) ---
+\usepackage{natbib}
 
-% Author information can be set in various styles:
-% For several authors from the same institution:
-% \author{Author 1 \and ... \and Author n \\
-%         Address line \\ ... \\ Address line}
-% if the names do not fit well on one line use
-%         Author 1 \\ {\bf Author 2} \\ ... \\ {\bf Author n} \\
-% For authors from different institutions:
-% \author{Author 1 \\ Address line \\  ... \\ Address line
-%         \And  ... \And
-%         Author n \\ Address line \\ ... \\ Address line}
-% To start a separate ``row'' of authors use \AND, as in
-% \author{Author 1 \\ Address line \\  ... \\ Address line
-%         \AND
-%         Author 2 \\ Address line \\ ... \\ Address line \And
-%         Author 3 \\ Address line \\ ... \\ Address line}
+% ============================================================
+% TITLE
+% This is like the big heading at the top of your Word document.
+% Replace the placeholder text between the { } with your title.
+% ============================================================
+\title{Title of Your Project Goes Here}
 
-\author{First Author \\
-  Affiliation / Address line 1 \\
-  Affiliation / Address line 2 \\
-  Affiliation / Address line 3 \\
-  \texttt{email@domain} \\\And
-  Second Author \\
-  Affiliation / Address line 1 \\
-  Affiliation / Address line 2 \\
-  Affiliation / Address line 3 \\
-  \texttt{email@domain} \\}
+% ============================================================
+% AUTHOR(S)
+% This is your name and affiliation (e.g. university, department).
+% Replace each placeholder with your details.
+% If you have a SINGLE author, delete everything from \And onwards.
+% If you have TWO authors, keep both blocks.
+% ============================================================
+\author{
+  Your Full Name Here \\          % <-- YOUR NAME
+  Department Name Goes Here \\    % <-- e.g. Department of Computer Science
+  University Name Goes Here \\    % <-- e.g. University of Pretoria
+  \texttt{email@goes.here}        % <-- your email address
+  % ---- DELETE the \and block below if you are the only author ----
+  \and
+  Second Author Name Here \\
+  Department Name Goes Here \\
+  University Name Goes Here \\
+  \texttt{email@goes.here}
+}
 
-%\author{
-%  \textbf{First Author\textsuperscript{1}},
-%  \textbf{Second Author\textsuperscript{1,2}},
-%  \textbf{Third T. Author\textsuperscript{1}},
-%  \textbf{Fourth Author\textsuperscript{1}},
-%\\
-%  \textbf{Fifth Author\textsuperscript{1,2}},
-%  \textbf{Sixth Author\textsuperscript{1}},
-%  \textbf{Seventh Author\textsuperscript{1}},
-%  \textbf{Eighth Author \textsuperscript{1,2,3,4}},
-%\\
-%  \textbf{Ninth Author\textsuperscript{1}},
-%  \textbf{Tenth Author\textsuperscript{1}},
-%  \textbf{Eleventh E. Author\textsuperscript{1,2,3,4,5}},
-%  \textbf{Twelfth Author\textsuperscript{1}},
-%\\
-%  \textbf{Thirteenth Author\textsuperscript{3}},
-%  \textbf{Fourteenth F. Author\textsuperscript{2,4}},
-%  \textbf{Fifteenth Author\textsuperscript{1}},
-%  \textbf{Sixteenth Author\textsuperscript{1}},
-%\\
-%  \textbf{Seventeenth S. Author\textsuperscript{4,5}},
-%  \textbf{Eighteenth Author\textsuperscript{3,4}},
-%  \textbf{Nineteenth N. Author\textsuperscript{2,5}},
-%  \textbf{Twentieth Author\textsuperscript{1}}
-%\\
-%\\
-%  \textsuperscript{1}Affiliation 1,
-%  \textsuperscript{2}Affiliation 2,
-%  \textsuperscript{3}Affiliation 3,
-%  \textsuperscript{4}Affiliation 4,
-%  \textsuperscript{5}Affiliation 5
-%\\
-%  \small{
-%    \textbf{Correspondence:} \href{mailto:email@domain}{email@domain}
-%  }
-%}
-
+% ============================================================
+% DOCUMENT BEGINS HERE
+% Everything between \begin{document} and \end{document}
+% is the actual content of your report.
+% ============================================================
 \begin{document}
-\maketitle
+\maketitle   % This command prints the title, author and date at the top.
+
+% ============================================================
+% ABSTRACT
+% A short summary of your whole report (usually 150-250 words).
+% In Word this would just be a paragraph labelled "Abstract".
+% ============================================================
 \begin{abstract}
-This document is a supplement to the general instructions for *ACL authors. It contains instructions for using the \LaTeX{} style files for ACL conferences.
-The document itself conforms to its own specifications, and is therefore an example of what your manuscript should look like.
-These instructions should be used both for papers submitted for review and for final versions of accepted papers.
+  Abstract paragraph goes here. Summarise your problem, your approach,
+  your main results, and your conclusion in a few sentences.
 \end{abstract}
 
+% ============================================================
+% SECTION — like "Heading 1" in Word
+% Use \section{Heading name} to create a numbered section.
+% LaTeX numbers them automatically (1, 2, 3 ...).
+% ============================================================
+
 \section{Introduction}
+% ---- Write your introduction paragraphs below ----
 
-These instructions are for authors submitting papers to *ACL conferences using \LaTeX. They are not self-contained. All authors must follow the general instructions for *ACL proceedings,\footnote{\url{http://acl-org.github.io/ACLPUB/formatting.html}} and this document contains additional instructions for the \LaTeX{} style files.
+Opening paragraph goes here. Introduce the problem and why it matters.
 
-The templates include the \LaTeX{} source of this document (\texttt{acl\_latex.tex}),
-the \LaTeX{} style file used to format it (\texttt{acl.sty}),
-an ACL bibliography style (\texttt{acl\_natbib.bst}),
-an example bibliography (\texttt{custom.bib}),
-and the bibliography for the ACL Anthology (\texttt{anthology.bib}).
+Second paragraph goes here. Give background context.
 
-\section{Engines}
+Third paragraph goes here. State what this report will cover.
 
-To produce a PDF file, pdf\LaTeX{} is strongly recommended (over original \LaTeX{} plus dvips+ps2pdf or dvipdf).
-The style file \texttt{acl.sty} can also be used with
-lua\LaTeX{} and
-Xe\LaTeX{}, which are especially suitable for text in non-Latin scripts.
-The file \texttt{acl\_lualatex.tex} in this repository provides
-an example of how to use \texttt{acl.sty} with either
-lua\LaTeX{} or
-Xe\LaTeX{}.
+% ============================================================
+% SUBSECTION — like "Heading 2" in Word
+% Use \subsection{Heading name} inside a section.
+% LaTeX numbers them automatically (1.1, 1.2 ...).
+% ============================================================
 
-\section{Preamble}
+\subsection{Problem Statement}
+% ---- Write your problem statement below ----
 
-The first line of the file must be
-\begin{quote}
-\begin{verbatim}
-\documentclass[11pt]{article}
-\end{verbatim}
-\end{quote}
+Subsection paragraph goes here. Describe the specific problem you are solving.
 
-To load the style file in the review version:
-\begin{quote}
-\begin{verbatim}
-\usepackage[review]{acl}
-\end{verbatim}
-\end{quote}
-For the final version, omit the \verb|review| option:
-\begin{quote}
-\begin{verbatim}
-\usepackage{acl}
-\end{verbatim}
-\end{quote}
+\subsection{Objectives}
+% ---- List your objectives below ----
 
-To use Times Roman, put the following in the preamble:
-\begin{quote}
-\begin{verbatim}
-\usepackage{times}
-\end{verbatim}
-\end{quote}
-(Alternatives like txfonts or newtx are also acceptable.)
+Subsection paragraph goes here. State the goals of your project.
 
-Please see the \LaTeX{} source of this document for comments on other packages that may be useful.
+% ============================================================
+% SUBSUBSECTION — like "Heading 3" in Word
+% Use \subsubsection{Heading name} inside a subsection.
+% ============================================================
 
-Set the title and author using \verb|\title| and \verb|\author|. Within the author list, format multiple authors using \verb|\and| and \verb|\And| and \verb|\AND|; please see the \LaTeX{} source for examples.
+% Example (uncomment the two lines below if you need a Heading 3):
+% \subsubsection{Sub-subheading goes here}
+% Paragraph goes here.
 
-By default, the box containing the title and author names is set to the minimum of 5 cm. If you need more space, include the following in the preamble:
-\begin{quote}
-\begin{verbatim}
-\setlength\titlebox{<dim>}
-\end{verbatim}
-\end{quote}
-where \verb|<dim>| is replaced with a length. Do not set this length smaller than 5 cm.
+% ============================================================
 
-\section{Document Body}
+\section{Related Work}
 
-\subsection{Footnotes}
+Section paragraph goes here. Review existing work relevant to your topic.
 
-Footnotes are inserted with the \verb|\footnote| command.\footnote{This is a footnote.}
+Second paragraph goes here. Discuss how your work differs or builds on prior work.
 
-\subsection{Tables and figures}
+% ============================================================
+% CITATION — like inserting a reference in Word
+%
+% Step 1: Add your reference to the file  custom.bib
+%         (see the bottom of this file for how that works).
+%
+% Step 2: Cite it in your text using one of these commands:
+%   \citet{key}   → Author (Year)      e.g.  Smith (2020) showed ...
+%   \citep{key}   → (Author, Year)     e.g.  ... was shown \citep{Smith2020}.
+%
+% Replace "AuthorYear" below with the key from your .bib file.
+% ============================================================
 
-See Table~\ref{tab:accents} for an example of a table and its caption.
-\textbf{Do not override the default caption sizes.}
+Citation example: as shown by \citet{AuthorYear}, paragraph continues here.
+Another citation example: previous work supports this \citep{AnotherAuthorYear}.
 
-\begin{table}
+% ============================================================
+
+\section{Methodology}
+
+\subsection{Subheading goes here}
+
+Paragraph goes here. Describe your approach or method.
+
+\subsection{Subheading goes here}
+
+Paragraph goes here. Continue describing your methodology.
+
+% ============================================================
+% FIGURE — like inserting an image in Word
+%
+% Put your image file (e.g. my-diagram.png) in the SAME folder
+% as this .tex file, then replace "my-diagram" below with
+% the filename (without the extension).
+%
+% \caption{...}  is the caption that appears under the image.
+% \label{...}    is a hidden tag so you can refer to the figure
+%                in your text with \ref{fig:my-diagram}.
+% ============================================================
+
+\begin{figure}[h]
   \centering
-  \begin{tabular}{lc}
-    \hline
-    \textbf{Command} & \textbf{Output} \\
-    \hline
-    \verb|{\"a}|     & {\"a}           \\
-    \verb|{\^e}|     & {\^e}           \\
-    \verb|{\`i}|     & {\`i}           \\
-    \verb|{\.I}|     & {\.I}           \\
-    \verb|{\o}|      & {\o}            \\
-    \verb|{\'u}|     & {\'u}           \\
-    \verb|{\aa}|     & {\aa}           \\\hline
-  \end{tabular}
-  \begin{tabular}{lc}
-    \hline
-    \textbf{Command} & \textbf{Output} \\
-    \hline
-    \verb|{\c c}|    & {\c c}          \\
-    \verb|{\u g}|    & {\u g}          \\
-    \verb|{\l}|      & {\l}            \\
-    \verb|{\~n}|     & {\~n}           \\
-    \verb|{\H o}|    & {\H o}          \\
-    \verb|{\v r}|    & {\v r}          \\
-    \verb|{\ss}|     & {\ss}           \\
-    \hline
-  \end{tabular}
-  \caption{Example commands for accented characters, to be used in, \emph{e.g.}, Bib\TeX{} entries.}
-  \label{tab:accents}
-\end{table}
-
-As much as possible, fonts in figures should conform
-to the document fonts. See Figure~\ref{fig:experiments} for an example of a figure and its caption.
-
-Using the \verb|graphicx| package graphics files can be included within figure
-environment at an appropriate point within the text.
-The \verb|graphicx| package supports various optional arguments to control the
-appearance of the figure.
-You must include it explicitly in the \LaTeX{} preamble (after the
-\verb|\documentclass| declaration and before \verb|\begin{document}|) using
-\verb|\usepackage{graphicx}|.
-
-\begin{figure}[t]
-  \includegraphics[width=\columnwidth]{example-image-golden}
-  \caption{A figure with a caption that runs for more than one line.
-    Example image is usually available through the \texttt{mwe} package
-    without even mentioning it in the preamble.}
-  \label{fig:experiments}
+  \includegraphics[width=\columnwidth]{my-diagram}   % <-- replace with your image filename
+  \caption{Figure caption goes here.}
+  \label{fig:my-diagram}
 \end{figure}
 
-\begin{figure*}[t]
-  \includegraphics[width=0.48\linewidth]{example-image-a} \hfill
-  \includegraphics[width=0.48\linewidth]{example-image-b}
-  \caption {A minimal working example to demonstrate how to place
-    two images side-by-side.}
-\end{figure*}
+% To refer to this figure in your text, write:
+%   Figure~\ref{fig:my-diagram} shows ...
 
-\subsection{Hyperlinks}
+% ============================================================
 
-Users of older versions of \LaTeX{} may encounter the following error during compilation:
-\begin{quote}
-\verb|\pdfendlink| ended up in different nesting level than \verb|\pdfstartlink|.
-\end{quote}
-This happens when pdf\LaTeX{} is used and a citation splits across a page boundary. The best way to fix this is to upgrade \LaTeX{} to 2018-12-01 or later.
+\section{Results}
 
-\subsection{Citations}
+\subsection{Subheading goes here}
 
-\begin{table*}
+Paragraph goes here. Present your findings.
+
+\subsection{Subheading goes here}
+
+Paragraph goes here. Continue presenting results.
+
+% ============================================================
+% TABLE — like a table in Word
+%
+% {lcc} means three columns: left-aligned, centred, centred.
+% Add or remove "c" or "l" or "r" columns as needed.
+% Use & to move to the next column, and \\ to end a row.
+% ============================================================
+
+\begin{table}[h]
   \centering
-  \begin{tabular}{lll}
+  \begin{tabular}{lcc}
     \hline
-    \textbf{Output}           & \textbf{natbib command} & \textbf{ACL only command} \\
+    \textbf{Column Heading 1} & \textbf{Column Heading 2} & \textbf{Column Heading 3} \\
     \hline
-    \citep{Gusfield:97}       & \verb|\citep|           &                           \\
-    \citealp{Gusfield:97}     & \verb|\citealp|         &                           \\
-    \citet{Gusfield:97}       & \verb|\citet|           &                           \\
-    \citeyearpar{Gusfield:97} & \verb|\citeyearpar|     &                           \\
-    \citeposs{Gusfield:97}    &                         & \verb|\citeposs|          \\
+    Row 1, Cell 1  & Row 1, Cell 2  & Row 1, Cell 3  \\
+    Row 2, Cell 1  & Row 2, Cell 2  & Row 2, Cell 3  \\
+    Row 3, Cell 1  & Row 3, Cell 2  & Row 3, Cell 3  \\
     \hline
   \end{tabular}
-  \caption{\label{citation-guide}
-    Citation commands supported by the style file.
-    The style is based on the natbib package and supports all natbib citation commands.
-    It also supports commands defined in previous ACL style files for compatibility.
-  }
-\end{table*}
+  \caption{Table caption goes here.}
+  \label{tab:my-table}
+\end{table}
 
-Table~\ref{citation-guide} shows the syntax supported by the style files.
-We encourage you to use the natbib styles.
-You can use the command \verb|\citet| (cite in text) to get ``author (year)'' citations, like this citation to a paper by \citet{Gusfield:97}.
-You can use the command \verb|\citep| (cite in parentheses) to get ``(author, year)'' citations \citep{Gusfield:97}.
-You can use the command \verb|\citealp| (alternative cite without parentheses) to get ``author, year'' citations, which is useful for using citations within parentheses (e.g. \citealp{Gusfield:97}).
+% To refer to this table in your text, write:
+%   Table~\ref{tab:my-table} shows ...
 
-A possessive citation can be made with the command \verb|\citeposs|.
-This is not a standard natbib command, so it is generally not compatible
-with other style files.
+% ============================================================
 
-\subsection{References}
+\section{Discussion}
 
-\nocite{Ando2005,andrew2007scalable,rasooli-tetrault-2015}
+Paragraph goes here. Interpret your results and explain what they mean.
 
-The \LaTeX{} and Bib\TeX{} style files provided roughly follow the American Psychological Association format.
-If your own bib file is named \texttt{custom.bib}, then placing the following before any appendices in your \LaTeX{} file will generate the references section for you:
-\begin{quote}
-\begin{verbatim}
-\bibliography{custom}
-\end{verbatim}
-\end{quote}
+Second paragraph goes here. Discuss limitations of your work.
 
-You can obtain the complete ACL Anthology as a Bib\TeX{} file from \url{https://aclweb.org/anthology/anthology.bib.gz}.
-To include both the Anthology and your own .bib file, use the following instead of the above.
-\begin{quote}
-\begin{verbatim}
-\bibliography{anthology,custom}
-\end{verbatim}
-\end{quote}
+% ============================================================
 
-Please see Section~\ref{sec:bibtex} for information on preparing Bib\TeX{} files.
+\section{Conclusion}
 
-\subsection{Equations}
+Paragraph goes here. Summarise what you did and what you found.
 
-An example equation is shown below:
-\begin{equation}
-  \label{eq:example}
-  A = \pi r^2
-\end{equation}
+Second paragraph goes here. Suggest directions for future work.
 
-Labels for equation numbers, sections, subsections, figures and tables
-are all defined with the \verb|\label{label}| command and cross references
-to them are made with the \verb|\ref{label}| command.
-
-This an example cross-reference to Equation~\ref{eq:example}.
-
-\subsection{Appendices}
-
-Use \verb|\appendix| before any appendix section to switch the section numbering over to letters. See Appendix~\ref{sec:appendix} for an example.
-
-\section{Bib\TeX{} Files}
-\label{sec:bibtex}
-
-Unicode cannot be used in Bib\TeX{} entries, and some ways of typing special characters can disrupt Bib\TeX's alphabetization. The recommended way of typing special characters is shown in Table~\ref{tab:accents}.
-
-Please ensure that Bib\TeX{} records contain DOIs or URLs when possible, and for all the ACL materials that you reference.
-Use the \verb|doi| field for DOIs and the \verb|url| field for URLs.
-If a Bib\TeX{} entry has a URL or DOI field, the paper title in the references section will appear as a hyperlink to the paper, using the hyperref \LaTeX{} package.
+% ============================================================
+% UNNUMBERED SECTIONS
+% Adding * after \section makes it unnumbered (no number in front).
+% Use this for Acknowledgements and Limitations — they are
+% typically not numbered in academic reports.
+% ============================================================
 
 \section*{Limitations}
 
-This document does not cover the content requirements for ACL or any
-other specific venue.  Check the author instructions for
-information on
-maximum page lengths, the required ``Limitations'' section,
-and so on.
+Paragraph goes here. Honestly describe the limitations of your work.
 
-\section*{Acknowledgments}
+\section*{Acknowledgements}
 
-This document has been adapted
-by Steven Bethard, Ryan Cotterell and Rui Yan
-from the instructions for earlier ACL and NAACL proceedings, including those for
-ACL 2019 by Douwe Kiela and Ivan Vuli\'{c},
-NAACL 2019 by Stephanie Lukin and Alla Roskovskaya,
-ACL 2018 by Shay Cohen, Kevin Gimpel, and Wei Lu,
-NAACL 2018 by Margaret Mitchell and Stephanie Lukin,
-Bib\TeX{} suggestions for (NA)ACL 2017/2018 from Jason Eisner,
-ACL 2017 by Dan Gildea and Min-Yen Kan,
-NAACL 2017 by Margaret Mitchell,
-ACL 2012 by Maggie Li and Michael White,
-ACL 2010 by Jing-Shin Chang and Philipp Koehn,
-ACL 2008 by Johanna D. Moore, Simone Teufel, James Allan, and Sadaoki Furui,
-ACL 2005 by Hwee Tou Ng and Kemal Oflazer,
-ACL 2002 by Eugene Charniak and Dekang Lin,
-and earlier ACL and EACL formats written by several people, including
-John Chen, Henry S. Thompson and Donald Walker.
-Additional elements were taken from the formatting instructions of the \emph{International Joint Conference on Artificial Intelligence} and the \emph{Conference on Computer Vision and Pattern Recognition}.
+Acknowledgements go here. Thank anyone who helped (supervisor, funding body, etc.).
+% Example: This work was supervised by [Supervisor name goes here] at [Institution name goes here].
 
-% Bibliography entries for the entire Anthology, followed by custom entries
-%\bibliography{custom,anthology-overleaf-1,anthology-overleaf-2}
+% ============================================================
+% REFERENCES / BIBLIOGRAPHY
+% This is automatically generated from your  custom.bib  file.
+% Think of custom.bib as Word's "Manage Sources" list.
+%
+% To add a reference:
+%   1. Open (or create)  custom.bib  in the same folder.
+%   2. Add an entry like the example below.
+%   3. Cite it in your text with \citet{} or \citep{}.
+%
+% Example .bib entry:
+%
+%   @article{Smith2020,
+%     author  = {Smith, John},
+%     title   = {Title of the Paper Goes Here},
+%     journal = {Journal Name Goes Here},
+%     year    = {2020},
+%     volume  = {10},
+%     pages   = {1--15},
+%     doi     = {10.xxxx/xxxxx}
+%   }
+%
+% The word before the comma on the first line ("Smith2020") is the
+% KEY you use when you write \citet{Smith2020} in your text.
+% ============================================================
 
-% Custom bibliography entries only
-\bibliography{custom}
+\bibliographystyle{plainnat}   % citation style — leave this as-is
+\bibliography{custom}          % points to your custom.bib file
+
+% ============================================================
+% APPENDIX (optional)
+% Delete this whole section if you do not have an appendix.
+% Appendix sections are labelled A, B, C ... automatically.
+% ============================================================
 
 \appendix
 
-\section{Example Appendix}
-\label{sec:appendix}
+\section{Appendix Title Goes Here}
+\label{sec:appendix-a}
 
-This is an appendix.
+Appendix paragraph goes here.
 
 \end{document}
+% ============================================================
+% END OF DOCUMENT
+% Nothing written below this line will appear in the PDF.
+% ============================================================
