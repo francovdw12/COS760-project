@@ -1,0 +1,15 @@
+services:
+  cos760:
+    build: .
+    image: cos760-project:cpu
+    # Bind-mount generated artifacts so they persist on the host after a run.
+    # The data/ directory is baked into the image; no mount needed for inputs.
+    volumes:
+      - ./results:/app/results
+      - ./outputs:/app/outputs
+      - ./embeddings:/app/embeddings
+      - ./data/subsets:/app/data/subsets
+    # Default command shows help; override at run time:
+    #   docker compose run --rm cos760 rq1
+    #   docker compose run --rm cos760 all
+    command: ["help"]

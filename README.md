@@ -1,159 +1,172 @@
-# COS760-project
+# COS760 — Cross-lingual Embedding Alignment
 
-Cross-lingual embedding alignment experiments for isiZulu, Sepedi, and Setswana.
+Cross-lingual embedding alignment experiments for isiZulu (conjunctive), Sepedi,
+and Setswana (disjunctive) — Group 40.
 
-## Repository Layout
+## Repository layout
+
 ```text
 COS760-project/
-|-- .venv/
-|-- config.py
-|-- embeddings.py
-|-- evaluation.py
-|-- lexicon.py
-|-- run_rq1.py
-|-- run_rq2.py
-|-- run_rq3.py
-|-- visualize_rq1.py
-|-- alignment/
-|   |-- CCA.py
-|   |-- KCCA.py
-|   `-- VecMap.py
-|-- data/
-|   |-- Bilingual Seed Lexicons/
-|   |-- NCHLT Text Corpora/
-|   |   |-- en/
-|   |   |-- nso/
-|   |   |-- tn/
-|   |   `-- zu/
-|   |-- ner_MasakhaNER 2.0/
-|   |   `-- masakhaner2/
-|   |       |-- zul/
-|   |       `-- tsn/
-|   |-- zulu/
-|   `-- ...
-|-- embeddings/
-|-- results/
-`-- vecmap/
+├── config.py                # Centralised paths and hyperparameters
+├── embeddings.py            # FastText training and loading helpers
+├── evaluation.py            # P@k, mean cosine similarity, CKA
+├── lexicon.py               # Bilingual lexicon loading and anchor building
+├── run_rq1.py               # RQ1 pipeline (alignment quality)
+├── run_rq2.py               # RQ2 pipeline (data efficiency / learning curves)
+├── visualize_rq1.py         # RQ1 figures (P@k, CKA, NER F1, radar)
+├── visualize_rq2.py         # RQ2 figures (learning curves, break-even, heatmap)
+├── alignment/
+│   ├── CCA.py
+│   ├── KCCA.py
+│   └── VecMap.py
+├── transfer/
+│   ├── corpus_subsets.py    # Deterministic NCHLT subset builder (RQ2)
+│   └── zero_shot_eval.py    # BiLSTM-CRF NER + zero-shot evaluation
+├── vecmap/vecmap-master/    # Bundled VecMap tool
+├── data/                    # All datasets (see section below)
+├── embeddings/              # FastText .bin/.txt models (generated)
+├── outputs/                 # NER checkpoints, VecMap outputs (generated)
+├── results/                 # CSVs and PNGs (generated)
+├── Dockerfile               # CPU-only Docker image
+├── docker-compose.yml       # Convenience compose file
+├── docker-entrypoint.sh     # Container command dispatcher
+└── requirements.txt         # Python dependencies
 ```
 
-## Required Data
-`run_rq1.py` needs three types of data.
+## Data layout
 
-### 1. NCHLT Text Corpora
-Required languages:
-- isiZulu
-- Sepedi
-- Setswana
+All datasets live under `data/`.  The canonical NCHLT directory is
+`data/NCHLT Text Corpora/` (with a space); the directory
+`data/NCHLT-Text-Corpora/` (with a dash) is an unused duplicate and can be
+safely deleted.
 
-Available in this workspace now:
-- English clean corpus
-- isiZulu clean and raw corpora
-- Sepedi clean and raw corpora
-- Setswana clean and raw corpora
+```text
+data/
+├── NCHLT Text Corpora/
+│   ├── en/corpora/1_Corpus_nchlt/CORP.NCHLT.eng.CLEAN.1.0.0.txt
+│   ├── nso/2.Corpora/CORP.NCHLT.nso.CLEAN.2.0.txt
+│   ├── tn/2.Corpora/CORP.NCHLT.tn.CLEAN.2.0.txt
+│   └── zu/2.Corpora/CORP.NCHLT.zu.CLEAN.2.0.txt
+├── Bilingual Seed Lexicons/
+│   ├── zul_en.txt
+│   ├── nso_en.txt
+│   └── tsn_en.txt
+├── ner_MasakhaNER 2.0/masakhaner2/
+│   ├── zul/  (train.txt  dev.txt  test.txt)
+│   ├── nso/  (train.txt  dev.txt  test.txt)
+│   └── tsn/  (train.txt  dev.txt  test.txt)
+└── conll2003/
+    ├── train.txt
+    ├── dev.txt
+    └── test.txt
+```
 
-### 2. MasakhaNER 2.0 / SADiLaR NER
-Required languages:
-- isiZulu
-- Sepedi
-- Setswana
+All required files are present in the current workspace.
 
+## Running locally
 
+### Setup
 
-Available in this workspace now:
-- isiZulu folder
-- Setswana folder
-- **Sepedi folder is still missing**
+```bash
+# Recreate the virtual environment (Python 3.11 or 3.13 recommended)
+python3.13 -m venv .venv
+source .venv/bin/activate
+pip install --upgrade pip
+# Install CPU PyTorch first (avoids pulling the large CUDA wheel)
+pip install torch --index-url https://download.pytorch.org/whl/cpu
+pip install -r requirements.txt
+```
 
+### RQ1 — Alignment quality
 
-Status in this workspace:
-- **all three bilingual seed lexicons are still missing**
-
-## How to Run
-Activate the environment and run the RQ1 pipeline:
 ```bash
 source .venv/bin/activate
 python run_rq1.py
-```
-visualization:
-```bash
 python visualize_rq1.py
 ```
 
-## RQ2 (Zero-shot NER + Data Efficiency)
-RQ2 is implemented in `run_rq2.py`.
+Outputs:
+- `results/rq1_results.csv` — P@1, P@5, MCS, CKA, NER F1 per language/method
+- `results/rq1_*.png` — six figures
 
-### Required Data (local-only)
-This repo ignores datasets by default (see `.gitignore`). Place files locally under `data/`.
+### RQ2 — Data efficiency / learning curves
 
-Minimal expected layout:
-```text
-data/
-   NCHLT Text Corpora/              # as in config.py (keep original NCHLT subfolders)
-   Bilingual Seed Lexicons/
-      zul_en.txt
-      nso_en.txt
-      tsn_en.txt
-   ner_MasakhaNER 2.0/masakhaner2/
-      zul/
-      nso/
-      tsn/
-   conll2003/
-      train.txt (or any file containing "train" in its name)
-      dev.txt   (or any file containing "dev"/"valid")
-      test.txt  (or any file containing "test")
-```
-
-RQ2 will also generate subset corpora under `data/subsets/{lang}/` automatically.
-
-### Run
 ```bash
 source .venv/bin/activate
 python run_rq2.py
+python visualize_rq2.py
 ```
 
-Useful options:
+Useful options for `run_rq2.py`:
+
 ```bash
 python run_rq2.py --langs zul tsn --fractions 1.0 0.25 0.05 --methods CCA KCCA VecMap --split test
 python run_rq2.py --force   # retrain embeddings/NER and rebuild cached alignment artifacts
 ```
 
-### Outputs
-- `results/rq2_results.csv` — per (language, fraction, method): entity-level Precision/Recall/F1.
-- `outputs/ner/bilstm_crf_conll2003.pt` — English BiLSTM-CRF checkpoint.
-- `embeddings/aligned/` — cached CCA/KCCA alignment artifacts per fraction.
-- `outputs/vecmap_*` — VecMap alignment outputs.
+Outputs:
+- `results/rq2_results.csv` — precision/recall/F1 per (lang, fraction, method)
+- `results/rq2_learning_curves.png` — F1 vs corpus size per language
+- `results/rq2_breakeven_table.png` — min tokens to reach F1 ≥ 0.50
+- `results/rq2_conjunctive_vs_disjunctive.png` — isiZulu vs Sepedi+Setswana
+- `results/rq2_method_heatmap.png` — F1 heatmap across all (method, lang, fraction)
+- `outputs/ner/bilstm_crf_conll2003.pt` — English BiLSTM-CRF checkpoint
+- `embeddings/aligned/` — cached CCA/KCCA alignment artifacts per fraction
+- `outputs/vecmap_*` — VecMap alignment outputs
 
-## What `run_rq1.py` Does
-1. Loads or trains FastText embeddings for English, isiZulu, Sepedi, and Setswana.
-2. Loads the bilingual seed lexicon for each language pair.
-3. Builds train/test lexicon splits.
-4. Aligns embeddings using:
-   - CCA
-   - KCCA
-   - VecMap
-5. Writes the results to `results/rq1_results.csv`.
+## Running via Docker (recommended for reproducibility)
 
-## Current Missing Files
-The script will keep printing missing-data warnings until these files are added:
-- `data/Bilingual Seed Lexicons/zul_en.txt`
-- `data/Bilingual Seed Lexicons/nso_en.txt`
-- `data/Bilingual Seed Lexicons/tsn_en.txt`
+The Docker image is CPU-only and bakes all required datasets into the image so
+no extra setup is needed on a fresh machine.
 
-If you want the full RQ1 pipeline to complete end-to-end, these three files are the next thing to fetch.
+### Build
 
-## Notes
-- The project now uses the `data/` folder inside the repo as the canonical location for datasets.
-- FastText `.bin` files are generated automatically from the NCHLT corpora when they are missing.
-- VecMap also requires text embeddings and will be skipped if the text export is not available yet.
+```bash
+docker compose build
+```
 
-## Quick Git Reference
+The first build takes ~10 minutes (downloads PyTorch CPU wheel and compiles
+fasttext-wheel).
+
+### Run individual stages
+
+```bash
+docker compose run --rm cos760 rq1
+docker compose run --rm cos760 rq2
+docker compose run --rm cos760 viz1
+docker compose run --rm cos760 viz2
+```
+
+### Run the full pipeline in one command
+
+```bash
+docker compose run --rm cos760 all
+```
+
+Generated files (`results/`, `outputs/`, `embeddings/`) are bind-mounted from
+the host via `docker-compose.yml`, so all artifacts appear in the project
+directory after the container finishes.
+
+### Advanced options
+
+```bash
+# Run RQ2 on a specific language and fraction subset
+docker compose run --rm cos760 rq2 --langs tsn --fractions 0.25 0.05
+
+# Force retrain (ignore cached checkpoints and alignment artifacts)
+docker compose run --rm cos760 rq2 --force
+
+# Open an interactive shell inside the container
+docker compose run --rm cos760 shell
+```
+
+## Quick git reference
+
 | Action | Command |
 | :--- | :--- |
-| Clone repo | `git clone <url>` |
-| Update local | `git pull origin main` |
-| New branch | `git checkout -b <branch-name>` |
-| Switch branch | `git checkout <branch-name>` |
-| Check status | `git status` |
-| Stage changes | `git add .` |
-| Commit | `git commit -m "Your message"` |
-| Push | `git push origin <branch-name>` |
+| Clone | `git clone <url>` |
+| Update | `git pull origin main` |
+| New branch | `git checkout -b <branch>` |
+| Stage | `git add .` |
+| Commit | `git commit -m "message"` |
+| Push | `git push origin <branch>` |
