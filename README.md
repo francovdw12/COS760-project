@@ -9,10 +9,11 @@ The project answers two research questions:
   **Kernel CCA (KCCA)** when aligning each language onto English, and does the
   relative advantage of non-linear methods differ by morphology (conjunctive
   isiZulu vs. disjunctive Sepedi/Setswana)?
-- **RQ2 — Data efficiency.** How does the corpus size needed to reach an
-  acceptable zero-shot NER F1 differ between conjunctive and disjunctive
-  languages?
-
+- **RQ2 — Data efficiency.** How does monolingual corpus size affect zero-shot 
+    NER transfer quality across alignment methods, and is there is systematic
+    difference in data-efficiency profiles between conjunctive and disjunctive
+    morphology?
+    
 ---
 
 ## Repository layout
@@ -25,8 +26,10 @@ COS760-project/
 ├── evaluation.py             # Intrinsic metrics: P@k, mean cosine similarity, linear CKA
 ├── run_rq1.py                # RQ1 orchestrator (alignment quality)  ← fully commented
 ├── run_rq2.py                # RQ2 orchestrator (data-efficiency learning curves)
-├── visualize_rq1.py          # Regenerates the 6 RQ1 figures from rq1_results.csv
+├── visualize_rq1.py          # Generates the 6 RQ1 figures from rq1_results.csv
+├── visualize_rq2.py          # Generates per-method F1 and BLI p@1 learning curve plots
 ├── 760.sh                    # Bootstrap: create .venv and install requirements
+├── 760.ps1                   # Bootstrap: create .venv and install requirements -- PowerShell
 ├── requirements.txt
 │
 ├── alignment/
@@ -34,6 +37,28 @@ COS760-project/
 │   ├── KCCA.py               # Kernel CCA (RBF) — non-linear alignment, from scratch
 │   └── VecMap.py             # Wrapper around the bundled VecMap tool (orthogonal mapping)
 │
+├── rq2/                      # RQ2 pipeline
+│   ├── __init__.py
+│   ├── aligners/
+│   │   ├── __init__.py
+│   │   ├── base.py             # AlignerBase abstract base class (interface contract for aligners)
+│   │   ├── cca.py              # CCAWrapper — linear alignment
+│   │   ├── kcca.py             # KCCAWrapper — kernel (non-linear) alignment
+│   │   └── vecmap.py           # VecMapWrapper — orthogonal mapping via subprocess
+│   ├── diagnostics/
+│   │   ├── __init__.py
+│   │   ├── bli.py              # Bilingual Lexicon Induction precision@1
+│   │   └── cka.py              # Centered Kernel Alignment
+│   └── pipeline/
+│       ├── __init__.py
+│       ├── config.py            # RQ2Config dataclass — centralized hyperparameter data object
+│       ├── fasttext_stage.py    # FastText training and embedding loading
+│       ├── ner_stage.py         # English NER model training, validation, tag utilities
+│       ├── alignment_stage.py   # Aligner factory, fit, and diagnostic layer
+│       ├── evaluation_stage.py  # Zero-shot NER evaluation and result row assembly
+│       └── experiment_runner.py # Three-stage pipeline loop; called by CLI entry point
+|
+|
 ├── transfer/
 │   ├── corpus_subsets.py     # Deterministic NCHLT corpus subsets for RQ2
 │   └── zero_shot_eval.py     # English BiLSTM-CRF training + zero-shot NER evaluation
@@ -49,7 +74,13 @@ COS760-project/
 │
 ├── embeddings/               # Trained models: {lang}.bin / {lang}.txt; aligned/ cache
 ├── outputs/                  # NER checkpoint + per-language VecMap outputs
-└── results/                  # rq1_results.csv + 6 PNG figures
+└── results/
+    ├── rq1_results.csv         # RQ1: 9 rows (3 languages x 3 methods)
+    ├── rq1_*.png               # RQ1 figures
+    └── rq2/
+        └── {run_name}/
+            ├── config.json     # Hyperparameters for this run (serialised automatically)
+            └── results.csv     # RQ2: rows per language x fraction x method
 ```
 
 ---
@@ -62,6 +93,11 @@ It looks for `python3.11` / `python3.12` / `python3` (in that order).
 ```bash
 cd COS760-project
 ./760.sh
+```
+
+```PowerShell
+cd COS760-project
+./760.ps1
 ```
 
 Or manually:
@@ -174,27 +210,121 @@ python visualize_rq1.py  # generates the 6 PNG figures
 
 ---
 
-## Running RQ2 — data efficiency *(implemented, not yet run)*
+## Running RQ2 — data efficiency and effect of morphological variation thereon (efficiency)
 
-`run_rq2.py` trains source embeddings on progressively smaller corpus subsets
-(100 / 75 / 50 / 25 / 10 / 5 %), aligns each with every method, and measures
-zero-shot NER F1 to build learning curves.
+RQ2 uses a class-based pipeline that separates alignemnt, diagnostics, and evaluation into
+explicit stages. Every run is reproducible with hyperparameters serialized to 'config.json'
+alongside the results CSV.
 
-```bash
-source .venv/bin/activate
-python run_rq2.py
+### Pipeline architecture
 
-# Useful options:
-python run_rq2.py --langs zul tsn --fractions 1.0 0.25 0.05 --methods CCA KCCA VecMap --split test
-python run_rq2.py --force        # rebuild cached embeddings / alignments
+```
+Stage 1  — Alignment       AlignerBase.fit()                fitted Aligner
+Diagnostic layer           AlignerBase.alignment_quality()  BLI p@1, CKA
+
+Stage 2  — Projection      AlignerBase.project()         (n_tokens, dim) float32
+Stage 3  — Evaluation      run_evaluation()              entity-level F1
 ```
 
-It generates `data/subsets/{lang}/` corpora automatically and writes
-`results/rq2_results.csv` (per language × fraction × method:
-precision / recall / F1, plus VecMap coverage).
+The diagnostic layer sits between fitting and evaluation so that alignment geometry can
+be assessed independently of NER performance. This allows the analysis to distinguish 
+between failures caused by poor alignment and failures caused by vocabulary coverage limitations
 
-> Learning-curve plots and the 50 %-F1 break-even analysis are **not yet
-> implemented** — there is currently no `visualize_rq2.py`.
+
+### Intermediate diagnostics
+
+| Metric | What it measures | Why it matters |
+| :--- | :--- | :--- |
+| **BLI p@1** | Fraction of lexicon pairs where the projected source vector retrieves the correct English translation as its nearest neighbour | Alignment quality independent of NER; a reliable predictor of downstream F1 |
+| **CKA** | Geometric similarity between source anchor space and English anchor space | Whether the two embedding spaces have compatible structure; low CKA predicts poor alignment regardless of method |
+| **VecMap coverage** | Fraction of inference-time tokens found in the aligned vocabulary | Isolates vocabulary coverage as a failure mode distinct from alignment geometry |
+| **n_anchors** | Number of valid lexicon pairs used for fitting and diagnostics | Contextualises BLI and CKA reliability — estimates from fewer than ~50 pairs are noisy |
+
+### Experimentation procedure
+
+RQ2 is designed for systematic hyperparameter sweeps. Each run accepts a named
+configuration and writes results to an isolated directory:
+
+```bash | PowerShell
+# Baseline run — all languages, all fractions, all methods
+python run_rq2_class_based.py --run-name baseline
+
+# Single method sweep for rapid iteration
+python run_rq2_class_based.py --run-name cca_full --methods CCA
+
+# KCCA gamma sweep (optional)
+python run_rq2_class_based.py --run-name kcca_g001 --methods KCCA --kcca-gamma 0.01
+python run_rq2_class_based.py --run-name kcca_g01  --methods KCCA --kcca-gamma 0.1
+python run_rq2_class_based.py --run-name kcca_g1   --methods KCCA --kcca-gamma 1.0
+
+# CCA n_components sweep (optional)
+python run_rq2_class_based.py --run-name cca_k50  --methods CCA --cca-n-components 50
+python run_rq2_class_based.py --run-name cca_k100 --methods CCA --cca-n-components 100
+python run_rq2_class_based.py --run-name cca_k150 --methods CCA --cca-n-components 150
+
+# Subset of languages or fractions
+python run_rq2_class_based.py --run-name zul_only --langs zul
+python run_rq2_class_based.py --run-name high_fractions --fractions 0.5 0.75 1.0
+
+# Force retrain (ignore cached artifacts)
+python run_rq2_class_based.py --run-name baseline --force
+```
+
+### CLI reference
+
+| Argument | Default | Description |
+| :--- | :--- | :--- |
+| `--run-name` | `default` | Labels the output directory under `results/rq2/` |
+| `--langs` | all | Space-separated language codes: `zul nso tsn` |
+| `--fractions` | all | Corpus fractions: `0.05 0.1 0.25 0.5 0.75 1.0` |
+| `--methods` | all | Alignment methods: `CCA KCCA VecMap` |
+| `--split` | `test` | MasakhaNER split: `train`, `dev`, or `test` |
+| `--force` | off | Recompute cached embeddings and alignment artifacts |
+| `--device` | `cpu` | PyTorch device: `cpu` or `cuda` |
+| `--ner-epochs` | `10` | Training epochs for the English BiLSTM-CRF |
+| `--cca-n-components` | `100` | CCA dimensionality cap |
+| `--kcca-n-components` | `50` | KCCA dimensionality cap |
+| `--kcca-gamma` | `0.1` | RBF kernel bandwidth |
+| `--kcca-reg` | `1e-3` | Tikhonov regularisation strength |
+| `--kcca-max-anchors` | `1000` | Maximum anchor pairs used for KCCA fitting |
+| `--no-validate-ner` | off | Skip English NER validation on CoNLL-2003 test |
+
+### RQ2 outputs
+
+Each run writes to `results/rq2/{run_name}/`:
+
+- `config.json` — full hyperparameter record for reproducibility
+- `results.csv` — one row per language × fraction × method with columns:
+
+| Column | Description |
+| :--- | :--- |
+| `language` | Language code |
+| `fraction` | Corpus fraction used for source embeddings |
+| `subset_tokens` | Token count of the corpus subset |
+| `method` | Alignment method |
+| `en_baseline_f1` | English NER F1 on CoNLL-2003 test (fixed reference) |
+| `precision` | Zero-shot NER precision on MasakhaNER |
+| `recall` | Zero-shot NER recall on MasakhaNER |
+| `f1` | Zero-shot NER F1 on MasakhaNER |
+| `bli_p1` | BLI precision@1 after alignment |
+| `cka` | CKA between source and English anchor spaces |
+| `n_anchors` | Number of valid lexicon pairs used |
+| `vecmap_coverage` | VecMap vocabulary hit rate at inference (VecMap only) |
+
+### Visualisation
+
+```bash | PowerShell
+python visualize_rq2.py --results-csv results/rq2/cca_full/results.csv
+```
+
+Generates one figure per alignment method with:
+- Primary y-axis — zero-shot NER F1 (solid lines)
+- Secondary y-axis — BLI p@1 (dashed lines)
+- X-axis — corpus fraction
+- One line colour per language, consistent across both axes
+- Horizontal reference line for English baseline F1
+
+Plots are saved alongside the results CSV.
 
 ---
 
@@ -202,33 +332,54 @@ precision / recall / F1, plus VecMap coverage).
 
 | File | Responsibility |
 | :--- | :--- |
-| `config.py` | All paths, language codes (`zul`/`nso`/`tsn`/`eng`), hyperparameters, fraction helpers. |
-| `embeddings.py` | `train_fasttext`, `load_embeddings_as_matrix` (L2-normalised), `save_embeddings_as_txt` (for VecMap), `supplement_with_oov` (subword inference for OOV anchors). |
-| `lexicon.py` | `load_lexicon` (slash-synonym expansion + NCHLT dash stripping), `split_lexicon` (train/test), `build_anchor_matrices`. |
-| `evaluation.py` | `precision_at_k`, `mean_cosine_similarity`, `linear_cka` (memory-efficient `‖XᵀY‖²_F` form). |
-| `alignment/CCA.py` | `CCAAligner` over sklearn's CCA. |
-| `alignment/KCCA.py` | `KCCAAligner` — RBF kernels, centred Gram matrices, batched out-of-sample projection. |
-| `alignment/VecMap.py` | `run_vecmap` (subprocess call to bundled VecMap), `load_txt_embeddings`. |
-| `transfer/zero_shot_eval.py` | `BiLSTMCRF`, `train_or_load_english_ner_model`, `evaluate_sentences`, MasakhaNER/CoNLL readers. |
-| `transfer/corpus_subsets.py` | Deterministic, nested, token-budgeted corpus subsets for RQ2. |
+| `config.py` | All paths, language codes (`zul`/`nso`/`tsn`/`eng`), hyperparameters, fraction helpers |
+| `embeddings.py` | `train_fasttext`, `load_embeddings_as_matrix` (L2-normalised), `save_embeddings_as_txt`, `supplement_with_oov` |
+| `lexicon.py` | `load_lexicon`, `split_lexicon`, `build_anchor_matrices` |
+| `evaluation.py` | `precision_at_k`, `mean_cosine_similarity`, `linear_cka` |
+| `alignment/CCA.py` | `CCAAligner` over sklearn CCA |
+| `alignment/KCCA.py` | `KCCAAligner` — RBF kernels, centred Gram matrices, batched projection |
+| `alignment/VecMap.py` | `run_vecmap` (subprocess), `load_txt_embeddings` |
+| `rq2/aligners/base.py` | `AlignerBase` — abstract interface: `fit`, `project`, `alignment_quality` |
+| `rq2/aligners/cca.py` | `CCAWrapper` — linear alignment behind `AlignerBase` |
+| `rq2/aligners/kcca.py` | `KCCAWrapper` — kernel alignment behind `AlignerBase` |
+| `rq2/aligners/vecmap.py` | `VecMapWrapper` — orthogonal mapping behind `AlignerBase`; tracks vocabulary coverage |
+| `rq2/diagnostics/bli.py` | `bli_precision_at_1` — nearest-neighbour retrieval accuracy |
+| `rq2/diagnostics/cka.py` | `compute_cka` — linear CKA between anchor spaces |
+| `rq2/pipeline/config.py` | `RQ2Config` dataclass — single source of truth for all hyperparameters |
+| `rq2/pipeline/fasttext_stage.py` | `ensure_fasttext_model`, `load_source_embeddings` |
+| `rq2/pipeline/ner_stage.py` | `load_ner_model`, `validate_ner_model`, `entity_types_from_tagset` |
+| `rq2/pipeline/alignment_stage.py` | `make_aligner`, `fit_aligner`, `run_diagnostics` |
+| `rq2/pipeline/evaluation_stage.py` | `run_evaluation`, `assemble_result_row` |
+| `rq2/pipeline/experiment_runner.py` | `run_rq2(config)` — main pipeline loop |
+| `transfer/zero_shot_eval.py` | `BiLSTMCRF`, `train_or_load_english_ner_model`, `evaluate_sentences`, dataset readers |
+| `transfer/corpus_subsets.py` | Deterministic, nested, token-budgeted corpus subsets |
 
 ---
 
-## Notes & caveats
+## Notes and caveats
 
-- **English pivot corpus.** The proposal mentions English Wikipedia; the code
-  trains English FastText on the **NCHLT English** corpus (see `config.py`).
-- **OOV supplementation.** Source/English vocabularies are extended with
-  FastText subword vectors for lexicon words that fall below `minCount`. Anchors
-  for *training* the aligners use these supplemented vocabularies; **intrinsic
-  metrics are computed on the original vocabulary only** to keep CCA/KCCA/VecMap
-  comparable.
-- **VecMap** runs as an external subprocess on the exported `.txt` embeddings
-  and is skipped if the text export is missing.
-- The `.bin` FastText models are large and regenerated from the corpora when
-  absent.
+- **English pivot corpus.** English FastText is trained on the NCHLT English
+  corpus, not Wikipedia. Embeddings may be less rich than published baselines
+  using large general corpora.
+- **NER model validation.** The English BiLSTM-CRF is validated on CoNLL-2003
+  test before every RQ2 run. A warning is raised if F1 falls below 0.75 —
+  zero-shot results should be interpreted cautiously below that threshold.
+- **OOV handling.** CCA and KCCA generalise to unseen tokens via their learned
+  transformation matrix applied to FastText subword vectors. VecMap has a fixed
+  aligned vocabulary and falls back to unaligned FastText vectors for OOV tokens
+  — tracked by the `vecmap_coverage` column.
+- **CKA reliability.** CKA estimates from fewer than ~50 anchor pairs are
+  noisy. The `n_anchors` column should be reported alongside CKA scores.
+- **Hyperparameter tuning.** `cca_n_components` is capped at 100 following
+  convention in the cross-lingual embedding literature. `kcca_gamma` and
+  `kcca_reg` are carried over from prior work without language-specific
+  tuning.
+- **Reproducibility.** Every run serialises its full `RQ2Config` to
+  `config.json` in the results directory. Results from different runs are
+  stored in separate directories and never overwrite each other.
 
 ---
+
 
 ## Quick git reference
 

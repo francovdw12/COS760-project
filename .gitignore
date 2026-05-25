@@ -20,3 +20,6 @@ outputs/*/*.pt
 embeddings/*.txt
 embeddings/*.bin
 
+
+embeddings/aligned/
+data/subsets/
