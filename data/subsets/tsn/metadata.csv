@@ -1,0 +1,7 @@
+lang,fraction,subset_path,total_lines,total_tokens,selected_lines,selected_tokens,seed
+tsn,1.0,/app/data/subsets/tsn/f100.txt,34133,1262510,34133,1262510,42
+tsn,0.75,/app/data/subsets/tsn/f075.txt,34133,1262510,25670,947002,42
+tsn,0.5,/app/data/subsets/tsn/f050.txt,34133,1262510,17152,631281,42
+tsn,0.25,/app/data/subsets/tsn/f025.txt,34133,1262510,8541,315664,42
+tsn,0.1,/app/data/subsets/tsn/f010.txt,34133,1262510,3395,126314,42
+tsn,0.05,/app/data/subsets/tsn/f005.txt,34133,1262510,1682,63130,42

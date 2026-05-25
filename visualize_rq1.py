@@ -256,8 +256,6 @@ def plot_radar(df: pd.DataFrame) -> None:
     _save(fig, "rq1_radar.png")
 
 
-# --- Entry point -----------------------------------------------------------
-
 def main() -> None:
     df = load_results()
     print(f"Loaded {len(df)} rows from {RESULTS_CSV}")

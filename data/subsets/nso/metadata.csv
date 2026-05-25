@@ -1,0 +1,7 @@
+lang,fraction,subset_path,total_lines,total_tokens,selected_lines,selected_tokens,seed
+nso,1.0,/app/data/subsets/nso/f100.txt,69250,2177442,69250,2177442,42
+nso,0.75,/app/data/subsets/nso/f075.txt,69250,2177442,51788,1633107,42
+nso,0.5,/app/data/subsets/nso/f050.txt,69250,2177442,34593,1088730,42
+nso,0.25,/app/data/subsets/nso/f025.txt,69250,2177442,17308,544362,42
+nso,0.1,/app/data/subsets/nso/f010.txt,69250,2177442,6957,217751,42
+nso,0.05,/app/data/subsets/nso/f005.txt,69250,2177442,3470,108936,42
