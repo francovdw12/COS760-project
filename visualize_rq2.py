@@ -1,297 +1,270 @@
-"""visualize_rq2.py
+"""Visualisation of the RQ2 results (data efficiency / learning curves).
 
-Generates one three-panel figure per alignment method:
-  Panel 1 — Line plot : F1 vs corpus fraction (one line per language)
-  Panel 2 — Heatmap   : CKA (languages x fractions)
-  Panel 3 — Heatmap   : BLI p@5 (languages x fractions)
+Reads `results/rq2_results.csv` produced by `run_rq2.py` and regenerates
+four figures in the `results/` folder:
 
-Languages are ordered by morphological type:
-  tsn (Setswana, disjunctive)
-  nso (Sepedi,   disjunctive)
-  zul (isiZulu,  conjunctive)
+  1. rq2_learning_curves.png      — NER F1 vs corpus size per language/method
+  2. rq2_breakeven_table.png      — min tokens to reach F1 ≥ 0.50 per method
+  3. rq2_conjunctive_vs_disjunctive.png — isiZulu vs Sepedi+Setswana mean F1
+  4. rq2_method_heatmap.png       — F1 heatmap (method × language×fraction)
 
-Usage example:
-    python visualize_rq2.py --results-csv results/rq2/full_baseline/results.csv
+Usage:
+    python visualize_rq2.py
 """
 
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
+import matplotlib
+
+matplotlib.use("Agg")
+
 import matplotlib.pyplot as plt
-import matplotlib.ticker as ticker
 import numpy as np
 import pandas as pd
-from matplotlib.colors import Normalize
-from matplotlib.cm import ScalarMappable
+import seaborn as sns
 
+from config import RESULTS_ROOT
 
-# ---------------------------------------------------------------------------
-# Constants
-# ---------------------------------------------------------------------------
+RESULTS_CSV = Path(RESULTS_ROOT) / "rq2_results.csv"
+BREAKEVEN_F1 = 0.50
 
-# Language display order — disjunctive first, conjunctive last
-LANGUAGE_ORDER = ["tsn", "nso", "zul"]
+LANG_DISPLAY = {"zul": "isiZulu", "nso": "Sepedi", "tsn": "Setswana"}
+LANG_ORDER = ["isiZulu", "Sepedi", "Setswana"]
 
-LANGUAGE_LABELS = {
-    "tsn": "Setswana\n(disjunctive)",
-    "nso": "Sepedi\n(disjunctive)",
-    "zul": "isiZulu\n(conjunctive)",
+METHOD_ORDER = ["CCA", "KCCA", "VecMap"]
+METHOD_PALETTE = {
+    "CCA": "#4C72B0",
+    "KCCA": "#C44E52",
+    "VecMap": "#55A868",
 }
 
-LANGUAGE_COLORS = {
-    "tsn": "#2A9D8F",   # teal   — disjunctive
-    "nso": "#E9C46A",   # amber  — disjunctive
-    "zul": "#E63946",   # red    — conjunctive
+MORPHO_PALETTE = {
+    "Conjunctive (isiZulu)": "#E07B54",
+    "Disjunctive (Sepedi + Setswana)": "#5BA4CF",
 }
 
-FRACTION_ORDER = [0.05, 0.1, 0.25, 0.5, 0.75, 1.0]
-
-FRACTION_LABELS = ["5%", "10%", "25%", "50%", "75%", "100%"]
-
-# Shared colour scale for both heatmaps
-HEATMAP_CMAP = "YlOrRd"
-HEATMAP_VMIN = 0.0
-HEATMAP_VMAX = 0.5   # adjust if scores exceed this after the full run
-
-FIGURE_BG  = "#FAFAF8"
-PANEL_BG   = "#F2F0EC"
-GRID_COLOR = "#D8D4CC"
-
-FONT_TITLE  = {"family": "serif", "size": 13, "weight": "bold"}
-FONT_LABEL  = {"family": "serif", "size": 10}
-FONT_TICK   = {"family": "monospace", "size": 8}
-FONT_ANNOT  = {"family": "monospace", "size": 7}
+sns.set_theme(style="whitegrid")
 
 
-# ---------------------------------------------------------------------------
-# Helpers
-# ---------------------------------------------------------------------------
-
-def _pivot(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
-    """Pivot to (language × fraction) matrix in the display order."""
-    piv = df.pivot_table(index="language", columns="fraction", values=value_col, aggfunc="mean")
-    # Reindex rows and columns to display order
-    langs_present = [l for l in LANGUAGE_ORDER if l in piv.index]
-    fracs_present = [f for f in FRACTION_ORDER if f in piv.columns]
-    return piv.reindex(index=langs_present, columns=fracs_present)
-
-
-def _draw_heatmap(ax, data: pd.DataFrame, title: str, norm: Normalize, cmap: str, annotate: bool = True):
-    """Draw a single heatmap panel."""
-    im = ax.imshow(data.values, aspect="auto", cmap=cmap, norm=norm)
-
-    ax.set_xticks(range(len(data.columns)))
-    ax.set_xticklabels(
-        [FRACTION_LABELS[FRACTION_ORDER.index(f)] if f in FRACTION_ORDER else str(f)
-         for f in data.columns],
-        fontdict=FONT_TICK,
-    )
-    ax.set_yticks(range(len(data.index)))
-    ax.set_yticklabels(
-        [LANGUAGE_LABELS.get(l, l) for l in data.index],
-        fontdict=FONT_TICK,
-    )
-
-    # Cell annotations
-    if annotate:
-        for i in range(data.shape[0]):
-            for j in range(data.shape[1]):
-                val = data.values[i, j]
-                if not np.isnan(val):
-                    ax.text(
-                        j, i, f"{val:.3f}",
-                        ha="center", va="center",
-                        fontdict=FONT_ANNOT,
-                        color="black" if val < (HEATMAP_VMAX * 0.6) else "white",
-                    )
-
-    ax.set_title(title, fontdict=FONT_LABEL, pad=6)
-    ax.set_facecolor(PANEL_BG)
-    return im
-
-# ---------------------------------------------------------------------------
-# Per-method figure
-# ---------------------------------------------------------------------------
-
-def plot_method(df_method: pd.DataFrame, method: str, out_dir: Path) -> None:
-    """Generate one three-panel figure for a single alignment method."""
-
-    fig = plt.figure(figsize=(13, 11), facecolor=FIGURE_BG)
-    fig.suptitle(
-        f"RQ2 — {method} alignment\nZero-shot NER transfer across corpus fractions",
-        fontsize=14,
-        fontweight="bold",
-        fontfamily="serif",
-        y=0.98,
-    )
-
-
-    gs = fig.add_gridspec(3, 1, height_ratios=[2.2, 1, 1], hspace=0.45)
-
-    ax_line  = fig.add_subplot(gs[0])
-    ax_cka   = fig.add_subplot(gs[1])
-    ax_bli   = fig.add_subplot(gs[2])
-
-    # -----------------------------------------------------------------------
-    # Panel 1 — F1 learning curve
-    # -----------------------------------------------------------------------
-    ax_line.set_facecolor(PANEL_BG)
-    ax_line.grid(axis="y", color=GRID_COLOR, linewidth=0.8, linestyle="--")
-    ax_line.grid(axis="x", color=GRID_COLOR, linewidth=0.5, linestyle=":")
-
-    for lang in LANGUAGE_ORDER:
-        df_lang = df_method[df_method["language"] == lang].sort_values("fraction")
-        if df_lang.empty:
-            continue
-        color = LANGUAGE_COLORS[lang]
-        label = LANGUAGE_LABELS[lang].replace("\n", " ")
-
-        ax_line.plot(
-            df_lang["fraction"],
-            df_lang["f1"],
-            color=color,
-            linestyle="-",
-            marker="o",
-            linewidth=2,
-            markersize=6,
-            label=label,
-            zorder=3,
+def load_results(csv_path: Path = RESULTS_CSV) -> pd.DataFrame:
+    if not csv_path.exists():
+        raise FileNotFoundError(
+            f"RQ2 results not found: {csv_path}\n"
+            "Run `python run_rq2.py` first."
         )
-
-    # English baseline
-    en_f1 = df_method["en_baseline_f1"].dropna().unique()
-    if len(en_f1) > 0:
-        ax_line.axhline(
-            y=en_f1[0],
-            color="#333333",
-            linestyle=":",
-            linewidth=1.5,
-            label=f"English baseline F1 ({en_f1[0]:.3f})",
-            zorder=2,
-        )
-
-    ax_line.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
-    ax_line.set_ylabel("Entity-level F1", fontdict=FONT_LABEL)
-    ax_line.set_xlim(0.02, 1.05)
-    ax_line.set_ylim(bottom=0)
-    ax_line.xaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0))
-    ax_line.tick_params(labelsize=8)
-    ax_line.legend(
-        loc="upper left",
-        fontsize=8,
-        framealpha=0.85,
-        edgecolor=GRID_COLOR,
-        prop={"family": "serif"},
+    df = pd.read_csv(csv_path)
+    df["language_display"] = df["language"].map(LANG_DISPLAY).fillna(df["language"])
+    df["language_display"] = pd.Categorical(
+        df["language_display"], categories=LANG_ORDER, ordered=True
     )
-    ax_line.set_title("Panel 1 — Zero-shot NER F1 vs corpus fraction", fontdict=FONT_LABEL, pad=8)
-    ax_line.set_facecolor(PANEL_BG)
-
-    # -----------------------------------------------------------------------
-    # Panels 2 & 3 — shared colour scale
-    # -----------------------------------------------------------------------
-    # Compute shared vmin/vmax across both CKA and BLI p@5
-    cka_piv  = _pivot(df_method, "cka")
-    bli_piv  = _pivot(df_method, "bli_p5")
-
-    all_vals = np.concatenate([
-        cka_piv.values.flatten(),
-        bli_piv.values.flatten(),
-    ])
-    all_vals = all_vals[~np.isnan(all_vals)]
-    shared_vmin = float(np.nanmin(all_vals)) if len(all_vals) else 0.0
-    shared_vmax = float(np.nanmax(all_vals)) if len(all_vals) else 0.5
-    # Give a small buffer above max
-    shared_vmax = max(shared_vmax * 1.05, shared_vmin + 0.01)
-
-    norm = Normalize(vmin=shared_vmin, vmax=shared_vmax)
-
-    # Panel 2 — CKA
-    im_cka = _draw_heatmap(
-        ax_cka, cka_piv,
-        "Panel 2 — CKA (alignment geometry)",
-        norm, HEATMAP_CMAP,
-    )
-    ax_cka.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
-
-    # Panel 3 — BLI p@5
-    im_bli = _draw_heatmap(
-        ax_bli, bli_piv,
-        "Panel 3 — BLI p@5 (lexicon induction accuracy)",
-        norm, HEATMAP_CMAP,
-    )
-    ax_bli.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
-
-    # Shared colorbar to the right of both heatmaps
-    cbar_ax = fig.add_axes([0.92, 0.08, 0.02, 0.28])
-    sm = ScalarMappable(cmap=HEATMAP_CMAP, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, cax=cbar_ax)
-    cbar.ax.tick_params(labelsize=7)
-    cbar.set_label("Score", fontsize=8, fontfamily="serif")
-
-    # -----------------------------------------------------------------------
-    # Morphological contrast annotation
-    # -----------------------------------------------------------------------
-    fig.text(
-        0.01, 0.22,
-        "<- disjunctive\n<- disjunctive\n<- conjunctive",
-        fontsize=7,
-        fontfamily="monospace",
-        color="#666666",
-        va="top",
-    )
-
-    # -----------------------------------------------------------------------
-    # Save
-    # -----------------------------------------------------------------------
-    out_path = out_dir / f"rq2_{method.lower()}_panels.png"
-    fig.savefig(out_path, dpi=150, bbox_inches="tight", facecolor=FIGURE_BG)
-    plt.close(fig)
-    print(f"[plot] saved {out_path}")
-
-
-# ---------------------------------------------------------------------------
-# Entry point
-# ---------------------------------------------------------------------------
-
-def main(argv=None) -> int:
-    parser = argparse.ArgumentParser(description="Visualise RQ2 results")
-    parser.add_argument(
-        "--results-csv",
-        required=True,
-        help="Path to results CSV e.g. results/rq2/full_baseline/results.csv",
-    )
-    parser.add_argument(
-        "--out-dir",
-        default=None,
-        help="Output directory for plots (defaults to same folder as results CSV)",
-    )
-    args = parser.parse_args(argv)
-
-    results_path = Path(args.results_csv)
-    if not results_path.exists():
-        print(f"[plot] results CSV not found: {results_path}")
-        return 1
-
-    out_dir = Path(args.out_dir) if args.out_dir else results_path.parent
-    out_dir.mkdir(parents=True, exist_ok=True)
-
-    df = pd.read_csv(results_path)
-
-    # Coerce numeric columns — empty strings become NaN
-    for col in ["f1", "precision", "recall", "cka", "bli_p5", "en_baseline_f1"]:
+    df["method"] = pd.Categorical(df["method"], categories=METHOD_ORDER, ordered=True)
+    for col in ["f1", "precision", "recall", "fraction", "subset_tokens"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
+    return df.sort_values(["language_display", "fraction", "method"]).reset_index(drop=True)
 
-    methods = df["method"].unique()
-    for method in methods:
-        df_method = df[df["method"] == method].copy()
-        plot_method(df_method, method, out_dir)
 
-    return 0
+def _save(fig: plt.Figure, name: str) -> None:
+    out = Path(RESULTS_ROOT) / name
+    out.parent.mkdir(parents=True, exist_ok=True)
+    fig.savefig(out, dpi=150, bbox_inches="tight")
+    plt.close(fig)
+    print(f"  wrote {out}")
+
+
+# --- 1. Learning curves -------------------------------------------------------
+
+def plot_learning_curves(df: pd.DataFrame) -> None:
+    """One panel per language; x = log10(subset_tokens), y = F1; one line/method."""
+    fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
+
+    for ax, lang in zip(axes, LANG_ORDER):
+        sub = df[df["language_display"] == lang]
+        for method in METHOD_ORDER:
+            msub = sub[sub["method"] == method].sort_values("subset_tokens")
+            if msub.empty:
+                continue
+            x = np.log10(msub["subset_tokens"].clip(lower=1))
+            y = msub["f1"]
+            ax.plot(x, y, marker="o", label=method,
+                    color=METHOD_PALETTE[method], linewidth=2)
+
+            # Mark break-even crossing
+            for i in range(len(y) - 1):
+                if y.iloc[i] < BREAKEVEN_F1 <= y.iloc[i + 1]:
+                    be_x = x.iloc[i + 1]
+                    ax.axvline(be_x, color=METHOD_PALETTE[method],
+                               linestyle=":", linewidth=1, alpha=0.7)
+                    ax.scatter([be_x], [BREAKEVEN_F1], marker="*", s=160,
+                               color=METHOD_PALETTE[method], zorder=5,
+                               label="_nolegend_")
+
+        ax.axhline(BREAKEVEN_F1, color="black", linestyle="--",
+                   linewidth=1, label=f"F1={BREAKEVEN_F1}")
+        ax.set_title(lang, fontweight="bold")
+        ax.set_xlabel("log10(subset tokens)")
+        if lang == LANG_ORDER[0]:
+            ax.set_ylabel("Entity-level F1")
+        ax.legend(fontsize=8)
+        ax.set_ylim(-0.02, 1.02)
+
+        # Secondary x-axis labels: actual token counts
+        ticks = ax.get_xticks()
+        ax.set_xticks(ticks)
+        ax.set_xticklabels([f"1e{t:.0f}" for t in ticks], fontsize=8)
+
+    fig.suptitle(
+        "RQ2 — NER F1 learning curves by corpus size\n"
+        f"(star marker = first crossing F1 >= {BREAKEVEN_F1}; dashed = break-even threshold)",
+        fontsize=13,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    _save(fig, "rq2_learning_curves.png")
+
+
+# --- 2. Break-even bar chart --------------------------------------------------
+
+def plot_breakeven_table(df: pd.DataFrame) -> None:
+    """Bar chart: min tokens to reach F1 ≥ BREAKEVEN_F1, per method per language."""
+    records = []
+    for lang in LANG_ORDER:
+        sub = df[df["language_display"] == lang]
+        for method in METHOD_ORDER:
+            msub = sub[sub["method"] == method].sort_values("subset_tokens")
+            crossed = msub[msub["f1"] >= BREAKEVEN_F1]
+            if crossed.empty:
+                tokens = float("nan")
+            else:
+                tokens = crossed["subset_tokens"].iloc[0]
+            records.append({"language": lang, "method": method, "breakeven_tokens": tokens})
+
+    be_df = pd.DataFrame(records)
+    be_df["method"] = pd.Categorical(be_df["method"], categories=METHOD_ORDER, ordered=True)
+
+    fig, ax = plt.subplots(figsize=(12, 5))
+    n_methods = len(METHOD_ORDER)
+    n_langs = len(LANG_ORDER)
+    width = 0.22
+    x = np.arange(n_langs)
+
+    for i, method in enumerate(METHOD_ORDER):
+        msub = be_df[be_df["method"] == method]
+        vals = [msub[msub["language"] == l]["breakeven_tokens"].values[0] for l in LANG_ORDER]
+        numeric_vals = [v if not np.isnan(v) else 0 for v in vals]
+        bars = ax.bar(x + (i - 1) * width, numeric_vals, width,
+                      label=method, color=METHOD_PALETTE[method], alpha=0.85)
+        for j, (bar, raw) in enumerate(zip(bars, vals)):
+            label = "never" if np.isnan(raw) else f"{int(raw):,}"
+            ax.text(bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + 500,
+                    label, ha="center", va="bottom", fontsize=8)
+
+    ax.set_xticks(x)
+    ax.set_xticklabels(LANG_ORDER)
+    ax.set_ylabel("Corpus tokens at break-even")
+    ax.set_title(
+        f"RQ2 — Min tokens to reach F1 ≥ {BREAKEVEN_F1}\n"
+        "(bars at 0 = never reached with available data)",
+        fontsize=13,
+    )
+    ax.legend(title="Method")
+    fig.tight_layout()
+    _save(fig, "rq2_breakeven_table.png")
+
+
+# --- 3. Conjunctive vs disjunctive -------------------------------------------
+
+def plot_conjunctive_vs_disjunctive(df: pd.DataFrame) -> None:
+    """Mean F1 per fraction: isiZulu (conjunctive) vs Sepedi+Setswana (disjunctive)."""
+    df2 = df.copy()
+    df2["morphology"] = df2["language"].map(
+        lambda l: "Conjunctive (isiZulu)" if l == "zul" else "Disjunctive (Sepedi + Setswana)"
+    )
+
+    # Mean F1 across methods and languages within each morphology group per fraction
+    agg = (
+        df2.groupby(["morphology", "fraction"], observed=True)["f1"]
+        .mean()
+        .reset_index()
+        .sort_values("fraction")
+    )
+
+    fig, ax = plt.subplots(figsize=(10, 5))
+    for morpho, color in MORPHO_PALETTE.items():
+        sub = agg[agg["morphology"] == morpho]
+        x = np.log10(sub["fraction"].clip(lower=1e-6) * 1e6)  # approx scale
+        ax.plot(
+            sub["fraction"] * 100, sub["f1"],
+            marker="o", label=morpho, color=color, linewidth=2,
+        )
+
+    ax.axhline(BREAKEVEN_F1, color="black", linestyle="--",
+               linewidth=1, label=f"Break-even F1={BREAKEVEN_F1}")
+    ax.set_xlabel("Corpus fraction used (%)")
+    ax.set_ylabel("Mean entity-level F1 (across methods)")
+    ax.set_title(
+        "RQ2 — Conjunctive vs Disjunctive language data efficiency\n"
+        "(mean F1 across CCA / KCCA / VecMap methods)",
+        fontsize=13,
+    )
+    ax.legend()
+    ax.set_ylim(-0.02, 1.02)
+    fig.tight_layout()
+    _save(fig, "rq2_conjunctive_vs_disjunctive.png")
+
+
+# --- 4. Method heatmap -------------------------------------------------------
+
+def plot_method_heatmap(df: pd.DataFrame) -> None:
+    """Heatmap of F1: rows = method, columns = (language, fraction)."""
+    df2 = df.copy()
+    df2["lang_frac"] = df2["language_display"].astype(str) + "\n" + df2["fraction"].map(
+        lambda f: f"{int(f * 100)}%"
+    )
+
+    # Order columns by language then fraction
+    col_order = []
+    for lang in LANG_ORDER:
+        fracs = sorted(df2[df2["language_display"] == lang]["fraction"].unique())
+        for f in fracs:
+            col_order.append(f"{lang}\n{int(f * 100)}%")
+
+    pivot = df2.pivot_table(index="method", columns="lang_frac", values="f1", observed=False)
+    pivot = pivot.reindex(index=METHOD_ORDER, columns=[c for c in col_order if c in pivot.columns])
+
+    fig, ax = plt.subplots(figsize=(max(10, len(pivot.columns) * 0.8 + 2), 4))
+    sns.heatmap(
+        pivot, annot=True, fmt=".3f", cmap="RdYlGn",
+        vmin=0.0, vmax=1.0,
+        linewidths=0.4, linecolor="white",
+        cbar_kws={"label": "F1"},
+        ax=ax,
+    )
+    ax.set_title(
+        "RQ2 — Zero-shot NER F1 heatmap (method × language × corpus fraction)\n"
+        "green = high F1, red = low F1",
+        fontsize=13,
+    )
+    ax.set_xlabel("Language — corpus fraction")
+    ax.set_ylabel("Method")
+    ax.tick_params(axis="x", labelsize=7, rotation=45)
+    fig.tight_layout()
+    _save(fig, "rq2_method_heatmap.png")
+
+
+# --- Entry point -------------------------------------------------------------
+
+def main() -> None:
+    df = load_results()
+    print(f"Loaded {len(df)} rows from {RESULTS_CSV}")
+    plot_learning_curves(df)
+    plot_breakeven_table(df)
+    plot_conjunctive_vs_disjunctive(df)
+    plot_method_heatmap(df)
+    print("All RQ2 figures regenerated.")
 
 
 if __name__ == "__main__":
-    raise SystemExit(main())
+    main()

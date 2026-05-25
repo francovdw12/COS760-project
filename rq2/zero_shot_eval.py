@@ -294,8 +294,16 @@ def train_or_load_english_ner_model(
     seed=42,
     force_retrain=False,
     device="cpu",
+    embedder=None,
 ):
-    """Train (or load) an English BiLSTM-CRF on CoNLL-2003."""
+    """Train (or load) an English BiLSTM-CRF on CoNLL-2003.
+
+    If `embedder` is provided, English tokens are embedded through that callable
+    (e.g. a method-specific alignment + bridge pipeline) so the model sees
+    English vectors that live in the SAME space the aligned Bantu vectors will
+    occupy at inference time. If None, falls back to raw FastText subword
+    inference on `english_fasttext_bin`.
+    """
     _set_seed(seed)
     _require_torch()
     import torch
@@ -328,15 +336,21 @@ def train_or_load_english_ner_model(
 
     tag_to_idx, idx_to_tag = build_tag_vocab(train_sents)
 
-    import fasttext
+    if embedder is None:
+        import fasttext
 
-    ft_en = fasttext.load_model(str(english_fasttext_bin))
-    cache = {}
+        ft_en = fasttext.load_model(str(english_fasttext_bin))
+        cache = {}
 
-    train_vecs = [_embed_sentence_fasttext(ft_en, s.tokens, cache) for s in train_sents]
+        def _default_embedder(tokens):
+            return _embed_sentence_fasttext(ft_en, tokens, cache)
+
+        embedder = _default_embedder
+
+    train_vecs = [embedder(s.tokens) for s in train_sents]
     train_tag_idx = [[tag_to_idx[t] for t in s.tags] for s in train_sents]
 
-    dev_vecs = [_embed_sentence_fasttext(ft_en, s.tokens, cache) for s in dev_sents] if dev_sents else []
+    dev_vecs = [embedder(s.tokens) for s in dev_sents] if dev_sents else []
 
     model = BiLSTMCRF(
         embedding_dim=embedding_dim,
@@ -375,7 +389,7 @@ def train_or_load_english_ner_model(
         if dev_vecs:
             metrics = evaluate_sentences(
                 model, idx_to_tag, dev_sents,
-                embedder=lambda toks: _embed_sentence_fasttext(ft_en, toks, cache),
+                embedder=embedder,
                 device=device,
                 allowed_entity_types=["PER", "ORG", "LOC", "MISC"],
             )

@@ -74,13 +74,16 @@ COS760-project/
 │
 ├── embeddings/               # Trained models: {lang}.bin / {lang}.txt; aligned/ cache
 ├── outputs/                  # NER checkpoint + per-language VecMap outputs
-└── results/
+├── results/
     ├── rq1_results.csv         # RQ1: 9 rows (3 languages x 3 methods)
     ├── rq1_*.png               # RQ1 figures
     └── rq2/
         └── {run_name}/
             ├── config.json     # Hyperparameters for this run (serialised automatically)
             └── results.csv     # RQ2: rows per language x fraction x method
+├── Dockerfile                # CPU-only Docker image
+├── docker-compose.yml        # Convenience compose file
+└── docker-entrypoint.sh      # Container command dispatcher
 ```
 
 ---
@@ -210,121 +213,75 @@ python visualize_rq1.py  # generates the 6 PNG figures
 
 ---
 
-## Running RQ2 — data efficiency and effect of morphological variation thereon (efficiency)
+## Running RQ2 — data efficiency *(implemented, not yet run)*
 
-RQ2 uses a class-based pipeline that separates alignemnt, diagnostics, and evaluation into
-explicit stages. Every run is reproducible with hyperparameters serialized to 'config.json'
-alongside the results CSV.
+`run_rq2.py` trains source embeddings on progressively smaller corpus subsets
+(100 / 75 / 50 / 25 / 10 / 5 %), aligns each with every method, and measures
+zero-shot NER F1 to build learning curves.
 
-### Pipeline architecture
+```bash
+source .venv/bin/activate
+python run_rq2.py
 
-```
-Stage 1  — Alignment       AlignerBase.fit()                fitted Aligner
-Diagnostic layer           AlignerBase.alignment_quality()  BLI p@1, CKA
-
-Stage 2  — Projection      AlignerBase.project()         (n_tokens, dim) float32
-Stage 3  — Evaluation      run_evaluation()              entity-level F1
-```
-
-The diagnostic layer sits between fitting and evaluation so that alignment geometry can
-be assessed independently of NER performance. This allows the analysis to distinguish 
-between failures caused by poor alignment and failures caused by vocabulary coverage limitations
-
-
-### Intermediate diagnostics
-
-| Metric | What it measures | Why it matters |
-| :--- | :--- | :--- |
-| **BLI p@1** | Fraction of lexicon pairs where the projected source vector retrieves the correct English translation as its nearest neighbour | Alignment quality independent of NER; a reliable predictor of downstream F1 |
-| **CKA** | Geometric similarity between source anchor space and English anchor space | Whether the two embedding spaces have compatible structure; low CKA predicts poor alignment regardless of method |
-| **VecMap coverage** | Fraction of inference-time tokens found in the aligned vocabulary | Isolates vocabulary coverage as a failure mode distinct from alignment geometry |
-| **n_anchors** | Number of valid lexicon pairs used for fitting and diagnostics | Contextualises BLI and CKA reliability — estimates from fewer than ~50 pairs are noisy |
-
-### Experimentation procedure
-
-RQ2 is designed for systematic hyperparameter sweeps. Each run accepts a named
-configuration and writes results to an isolated directory:
-
-```bash | PowerShell
-# Baseline run — all languages, all fractions, all methods
-python run_rq2_class_based.py --run-name baseline
-
-# Single method sweep for rapid iteration
-python run_rq2_class_based.py --run-name cca_full --methods CCA
-
-# KCCA gamma sweep (optional)
-python run_rq2_class_based.py --run-name kcca_g001 --methods KCCA --kcca-gamma 0.01
-python run_rq2_class_based.py --run-name kcca_g01  --methods KCCA --kcca-gamma 0.1
-python run_rq2_class_based.py --run-name kcca_g1   --methods KCCA --kcca-gamma 1.0
-
-# CCA n_components sweep (optional)
-python run_rq2_class_based.py --run-name cca_k50  --methods CCA --cca-n-components 50
-python run_rq2_class_based.py --run-name cca_k100 --methods CCA --cca-n-components 100
-python run_rq2_class_based.py --run-name cca_k150 --methods CCA --cca-n-components 150
-
-# Subset of languages or fractions
-python run_rq2_class_based.py --run-name zul_only --langs zul
-python run_rq2_class_based.py --run-name high_fractions --fractions 0.5 0.75 1.0
-
-# Force retrain (ignore cached artifacts)
-python run_rq2_class_based.py --run-name baseline --force
+# Useful options:
+python run_rq2.py --langs zul tsn --fractions 1.0 0.25 0.05 --methods CCA KCCA VecMap --split test
+python run_rq2.py --force        # rebuild cached embeddings / alignments
 ```
 
-### CLI reference
+It generates `data/subsets/{lang}/` corpora automatically and writes
+`results/rq2_results.csv` (per language × fraction × method:
+precision / recall / F1, plus VecMap coverage).
 
-| Argument | Default | Description |
-| :--- | :--- | :--- |
-| `--run-name` | `default` | Labels the output directory under `results/rq2/` |
-| `--langs` | all | Space-separated language codes: `zul nso tsn` |
-| `--fractions` | all | Corpus fractions: `0.05 0.1 0.25 0.5 0.75 1.0` |
-| `--methods` | all | Alignment methods: `CCA KCCA VecMap` |
-| `--split` | `test` | MasakhaNER split: `train`, `dev`, or `test` |
-| `--force` | off | Recompute cached embeddings and alignment artifacts |
-| `--device` | `cpu` | PyTorch device: `cpu` or `cuda` |
-| `--ner-epochs` | `10` | Training epochs for the English BiLSTM-CRF |
-| `--cca-n-components` | `100` | CCA dimensionality cap |
-| `--kcca-n-components` | `50` | KCCA dimensionality cap |
-| `--kcca-gamma` | `0.1` | RBF kernel bandwidth |
-| `--kcca-reg` | `1e-3` | Tikhonov regularisation strength |
-| `--kcca-max-anchors` | `1000` | Maximum anchor pairs used for KCCA fitting |
-| `--no-validate-ner` | off | Skip English NER validation on CoNLL-2003 test |
+> Learning-curve plots and the 50 %-F1 break-even analysis are **not yet
+> implemented** — there is currently no `visualize_rq2.py`.
 
-### RQ2 outputs
+---
 
-Each run writes to `results/rq2/{run_name}/`:
+## Running via Docker (recommended for reproducibility)
 
-- `config.json` — full hyperparameter record for reproducibility
-- `results.csv` — one row per language × fraction × method with columns:
+The Docker image is CPU-only and bakes all required datasets into the image so
+no extra setup is needed on a fresh machine.
 
-| Column | Description |
-| :--- | :--- |
-| `language` | Language code |
-| `fraction` | Corpus fraction used for source embeddings |
-| `subset_tokens` | Token count of the corpus subset |
-| `method` | Alignment method |
-| `en_baseline_f1` | English NER F1 on CoNLL-2003 test (fixed reference) |
-| `precision` | Zero-shot NER precision on MasakhaNER |
-| `recall` | Zero-shot NER recall on MasakhaNER |
-| `f1` | Zero-shot NER F1 on MasakhaNER |
-| `bli_p1` | BLI precision@1 after alignment |
-| `cka` | CKA between source and English anchor spaces |
-| `n_anchors` | Number of valid lexicon pairs used |
-| `vecmap_coverage` | VecMap vocabulary hit rate at inference (VecMap only) |
+### Build
 
-### Visualisation
-
-```bash | PowerShell
-python visualize_rq2.py --results-csv results/rq2/cca_full/results.csv
+```bash
+docker compose build
 ```
 
-Generates one figure per alignment method with:
-- Primary y-axis — zero-shot NER F1 (solid lines)
-- Secondary y-axis — BLI p@1 (dashed lines)
-- X-axis — corpus fraction
-- One line colour per language, consistent across both axes
-- Horizontal reference line for English baseline F1
+The first build takes ~10 minutes (downloads PyTorch CPU wheel and compiles
+fasttext-wheel).
 
-Plots are saved alongside the results CSV.
+### Run individual stages
+
+```bash
+docker compose run --rm cos760 rq1
+docker compose run --rm cos760 rq2
+docker compose run --rm cos760 viz1
+docker compose run --rm cos760 viz2
+```
+
+### Run the full pipeline in one command
+
+```bash
+docker compose run --rm cos760 all
+```
+
+Generated files (`results/`, `outputs/`, `embeddings/`) are bind-mounted from
+the host via `docker-compose.yml`, so all artifacts appear in the project
+directory after the container finishes.
+
+### Advanced options
+
+```bash
+# Run RQ2 on a specific language and fraction subset
+docker compose run --rm cos760 rq2 --langs tsn --fractions 0.25 0.05
+
+# Force retrain (ignore cached checkpoints and alignment artifacts)
+docker compose run --rm cos760 rq2 --force
+
+# Open an interactive shell inside the container
+docker compose run --rm cos760 shell
+```
 
 ---
 

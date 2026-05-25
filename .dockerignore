@@ -1,0 +1,39 @@
+# --- Python environment and cache ---
+.venv/
+banto_ner_env/
+__pycache__/
+*.pyc
+*.pyo
+.pytest_cache/
+
+# --- Pre-trained model weights (generated at runtime) ---
+*.bin
+*.pt
+*.pth
+*.vec
+
+# --- Generated outputs (bind-mounted from host via docker-compose) ---
+outputs/
+results/
+embeddings/*.txt
+embeddings/*.bin
+embeddings/aligned/
+data/subsets/
+
+# --- Duplicate NCHLT data directory (unused; canonical path has space) ---
+data/NCHLT-Text-Corpora/
+
+# --- Git and OS noise ---
+.git/
+.gitignore
+.DS_Store
+**/.DS_Store
+
+# --- IDE ---
+.cursor/
+.vscode/
+
+# --- Docs/admin (not needed at runtime) ---
+Optimizing*.pdf
+*.md
+760.sh
