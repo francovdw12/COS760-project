@@ -336,14 +336,3 @@ docker compose run --rm cos760 shell
   stored in separate directories and never overwrite each other.
 
 ---
-
-
-## Quick git reference
-
-| Action | Command |
-| :--- | :--- |
-| Update local | `git pull origin main` |
-| New branch | `git checkout -b <branch-name>` |
-| Stage changes | `git add .` |
-| Commit | `git commit -m "message"` |
-| Push | `git push origin <branch-name>` |

@@ -97,5 +97,10 @@ class CCAWrapper(AlignerBase):
             en_words, _l2_rows(en_matrix),
             lexicon_pairs,
         )
-        cka = compute_cka(X_src, X_tgt) if X_src.shape[0] >= 10 else float("nan")
+        if X_src.shape[0] >= 10:
+            A = _l2_rows(((_l2_rows(X_src) @ self._aligner.W_src) @ self._R).astype(np.float32))
+            B = _l2_rows(X_tgt)
+            cka = compute_cka(A, B)
+        else:
+            cka = float("nan")
         return {"bli_p5": bli, "cka": cka, "n_anchors": len(X_src)}

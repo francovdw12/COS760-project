@@ -365,6 +365,14 @@ def plot_breakeven_table(df: pd.DataFrame, out_dir: Path) -> None:
     width = 0.22
     x = np.arange(len(LANG_ORDER_DISPLAY))
 
+    # Determine a sane y-range. When NO method crosses the threshold (the honest
+    # case here), every bar is 0; fall back to the corpus-size range so the axis
+    # and the "never" labels stay bounded (a label far outside the data range
+    # blows up bbox_inches="tight").
+    crossed_vals = be_df["breakeven_tokens"].dropna().tolist()
+    top = max(crossed_vals) if crossed_vals else float(df["subset_tokens"].max())
+    offset = top * 0.01
+
     for i, method in enumerate(METHOD_ORDER):
         msub = be_df[be_df["method"] == method]
         vals = [
@@ -380,10 +388,11 @@ def plot_breakeven_table(df: pd.DataFrame, out_dir: Path) -> None:
             label = "never" if np.isnan(raw) else f"{int(raw):,}"
             ax.text(
                 bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + 500,
+                bar.get_height() + offset,
                 label, ha="center", va="bottom", fontsize=8,
             )
 
+    ax.set_ylim(0, top * 1.15)
     ax.set_xticks(x)
     ax.set_xticklabels(LANG_ORDER_DISPLAY)
     ax.set_ylabel("Corpus tokens at break-even")
@@ -489,6 +498,58 @@ def plot_method_heatmap(df: pd.DataFrame, out_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
+# PRIMARY RQ2 figure — intrinsic data-efficiency (decoupled from NER domain wall)
+# ---------------------------------------------------------------------------
+
+def plot_intrinsic_efficiency(df: pd.DataFrame, out_dir: Path) -> None:
+    """Data-efficiency on the INTRINSIC alignment metrics (BLI p@5, CKA).
+
+    This is the figure that actually answers RQ2: downstream NER F1 is floored
+    by the CoNLL->MasakhaNER domain mismatch regardless of corpus size, so it
+    cannot reveal a data-efficiency signal. BLI p@5 and post-alignment CKA
+    reflect embedding/alignment quality directly and are plotted vs log-tokens.
+    """
+    metrics = [(c, l) for c, l in [("bli_p5", "BLI p@5 (lexicon induction)"),
+                                    ("cka", "CKA (post-alignment geometry)")]
+               if c in df.columns]
+    if not metrics:
+        return
+
+    fig, axes = plt.subplots(
+        len(metrics), 3, figsize=(18, 5 * len(metrics)), sharex="col", squeeze=False,
+    )
+
+    for row, (col, ylabel) in enumerate(metrics):
+        for ax, lang in zip(axes[row], LANG_ORDER_DISPLAY):
+            sub = df[df["language_display"] == lang]
+            for method in METHOD_ORDER:
+                msub = sub[sub["method"] == method].sort_values("subset_tokens")
+                msub = msub[msub[col].notna()]
+                if msub.empty:
+                    continue
+                x = np.log10(msub["subset_tokens"].clip(lower=1))
+                ax.plot(x, msub[col], marker="o", label=method,
+                        color=METHOD_PALETTE[method], linewidth=2)
+            if row == 0:
+                ax.set_title(lang, fontweight="bold")
+            ax.set_ylabel(ylabel if lang == LANG_ORDER_DISPLAY[0] else "")
+            ax.set_xlabel("log10(subset tokens)")
+            ax.set_ylim(bottom=0)
+            ax.legend(fontsize=8)
+            ticks = ax.get_xticks()
+            ax.set_xticks(ticks)
+            ax.set_xticklabels([f"1e{t:.0f}" for t in ticks], fontsize=8)
+
+    fig.suptitle(
+        "RQ2 — Intrinsic data-efficiency: alignment quality vs corpus size\n"
+        "(rising curve = more monolingual data helps; flat = data is not the bottleneck)",
+        fontsize=13,
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.94))
+    _save(fig, out_dir, "rq2_intrinsic_efficiency.png")
+
+
+# ---------------------------------------------------------------------------
 # Entry point
 # ---------------------------------------------------------------------------
 
@@ -512,6 +573,9 @@ def main(argv=None) -> int:
 
     df = load_results(results_path)
     print(f"[plot] loaded {len(df)} rows from {results_path}")
+
+    # PRIMARY RQ2 answer: intrinsic data-efficiency (decoupled from NER domain wall)
+    plot_intrinsic_efficiency(df, out_dir)
 
     for method in df["method"].unique():
         plot_method_panels(

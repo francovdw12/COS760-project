@@ -44,18 +44,21 @@ def load_source_embeddings(bin_path: Path) -> Tuple[List[str], np.ndarray]:
 
 
 def supplement_source_embeddings(
-    lang: str,
+    bin_path: Path,
     words: List[str],
     matrix: np.ndarray,
     lexicon_pairs: List[Tuple[str, str]],
 ) -> Tuple[List[str], np.ndarray]:
-    """Supplement source vocabulary with OOV lexicon words via FastText subword inference
+    """Supplement source vocabulary with OOV lexicon words via FastText subword inference.
+
+    Uses the model at ``bin_path`` (the CURRENT fraction's model). Using the
+    full-corpus model here would leak full-corpus information into every
+    fraction and invalidate the RQ2 data-efficiency comparison.
     """
     from embeddings import supplement_with_oov
-    from config import get_embeddings_path
 
     src_words = [sw for sw, _ in lexicon_pairs]
-    return supplement_with_oov(get_embeddings_path(lang), words, matrix, src_words)
+    return supplement_with_oov(bin_path, words, matrix, src_words)
 
 
 def supplement_english_embeddings(

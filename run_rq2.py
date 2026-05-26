@@ -26,6 +26,8 @@ def main(argv: Sequence[str] | None = None) -> int:
     parser.add_argument("--kcca-max-anchors", type=int, default=1000)
     parser.add_argument("--no-validate-ner", action="store_false", dest="validate_ner")
     parser.add_argument("--ner-epochs", type=int, default=10)
+    parser.add_argument("--seed", type=int, default=42,
+                        help="Replicate seed (use with --force + distinct --run-name for error bars)")
     args = parser.parse_args(argv)
 
     config = RQ2Config(
@@ -43,6 +45,7 @@ def main(argv: Sequence[str] | None = None) -> int:
         kcca_reg=args.kcca_reg,
         kcca_max_anchors=args.kcca_max_anchors,
         validate_ner=args.validate_ner,
+        seed=args.seed,
     )
 
     run_rq2(config)

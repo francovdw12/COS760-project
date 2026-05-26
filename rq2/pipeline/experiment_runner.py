@@ -121,7 +121,7 @@ def run_rq2(config: RQ2Config) -> None:
             continue
 
         # Split lexicon — train pairs for fitting, eval pairs for BLI diagnostic
-        train_pairs, eval_pairs = split_lexicon(lexicon_pairs, held_out=1000, seed=42)
+        train_pairs, eval_pairs = split_lexicon(lexicon_pairs, held_out=1000, seed=config.seed)
         print(f"[RQ2] Lexicon split: {len(train_pairs)} train / {len(eval_pairs)} eval pairs")
 
         ner_dir = get_ner_path(lang)
@@ -139,7 +139,7 @@ def run_rq2(config: RQ2Config) -> None:
 
         try:
             subset_stats = ensure_language_subsets(
-                lang, fractions=config.fractions, seed=42, force=config.force
+                lang, fractions=config.fractions, seed=config.seed, force=config.force
             )
         except FileNotFoundError as e:
             print(f"[RQ2] {e} — skipping {lang}")
@@ -163,9 +163,11 @@ def run_rq2(config: RQ2Config) -> None:
             src_words_orig, src_matrix_orig = load_source_embeddings(src_bin)
             ft_src = fasttext.load_model(str(src_bin))
 
-            # Supplement source vocabulary with OOV lexicon words
+            # Supplement source vocabulary with OOV lexicon words, using THIS
+            # fraction's own model (not the full corpus) so the data-efficiency
+            # comparison stays honest.
             src_words, src_matrix = supplement_source_embeddings(
-                lang, src_words_orig, src_matrix_orig, lexicon_pairs
+                src_bin, src_words_orig, src_matrix_orig, lexicon_pairs
             )
             print(f"[RQ2] {lang} vocab after supplementation: {len(src_words)} words")
 

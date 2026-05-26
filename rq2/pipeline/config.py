@@ -23,6 +23,10 @@ class RQ2Config:
     validate_ner : bool = True
     ner_epochs: int = 5
 
+    # Reproducibility — vary across runs (with --force + a distinct --run-name)
+    # to obtain independent replicates for error bars.
+    seed: int = 42
+
     # CCA
     cca_n_components: int = 100
 

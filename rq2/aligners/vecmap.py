@@ -7,6 +7,7 @@ import numpy as np
 
 from alignment.VecMap import load_txt_embeddings, run_vecmap
 from rq2.diagnostics.bli import bli_precision_at_k
+from rq2.diagnostics.cka import compute_cka
 from rq2.aligners.base import AlignerBase
 
 
@@ -27,6 +28,11 @@ class VecMapWrapper(AlignerBase):
         self.lex_path = lex_path
         self.force = force
         self._aligned_dict: Dict[str, np.ndarray] = {}
+        # VecMap maps BOTH languages into a shared space, so it also transforms
+        # the English side. We must keep this aligned-English dict and use it as
+        # the reference for BLI/CKA — comparing against the original English
+        # space (a different frame) collapses retrieval to ~0.
+        self._en_aligned_dict: Dict[str, np.ndarray] = {}
         self._stats: Dict[str, int] = {"hit": 0, "total": 0}
 
     def fit(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs,
@@ -37,11 +43,13 @@ class VecMapWrapper(AlignerBase):
         en_txt = get_text_embeddings_path(ENGLISH)
         vecmap_dir = Path(OUTPUTS_ROOT) / f"vecmap_{self.lang}_{self.fraction:.2f}"
         src_aligned_path = vecmap_dir / "src_aligned.txt"
+        tgt_aligned_path = vecmap_dir / "tgt_aligned.txt"
 
-        if src_aligned_path.exists() and not self.force:
+        if src_aligned_path.exists() and tgt_aligned_path.exists() and not self.force:
             self._aligned_dict = load_txt_embeddings(str(src_aligned_path))
+            self._en_aligned_dict = load_txt_embeddings(str(tgt_aligned_path))
         else:
-            self._aligned_dict, _ = run_vecmap(
+            self._aligned_dict, self._en_aligned_dict = run_vecmap(
                 str(src_txt), str(en_txt), str(self.lex_path),
                 output_dir=str(vecmap_dir),
             )
@@ -70,20 +78,44 @@ class VecMapWrapper(AlignerBase):
         self._stats = {"hit": 0, "total": 0}
 
     def alignment_quality(self, src_words, src_matrix, en_words, en_matrix, lexicon_pairs):
+        # English reference = VecMap's ALIGNED target embeddings (shared space),
+        # NOT the original English space passed in en_words/en_matrix.
         aligned_words = list(self._aligned_dict.keys())
         aligned_matrix = _l2_rows(
             np.stack(list(self._aligned_dict.values())).astype(np.float32)
         )
-        en_norm = _l2_rows(en_matrix)
+        en_aligned_words = list(self._en_aligned_dict.keys())
+        en_aligned_matrix = _l2_rows(
+            np.stack(list(self._en_aligned_dict.values())).astype(np.float32)
+        )
 
         bli = bli_precision_at_k(
             aligned_words, aligned_matrix,
-            en_words, en_norm,
+            en_aligned_words, en_aligned_matrix,
             lexicon_pairs,
         )
+
+        # CKA on the post-alignment geometry — both sides in VecMap's shared space.
+        en_idx = {w: i for i, w in enumerate(en_aligned_words)}
+        aligned_src, aligned_tgt = [], []
+        for s, t in lexicon_pairs:
+            v = self._aligned_dict.get(s)
+            if v is None and s.lower() != s:
+                v = self._aligned_dict.get(s.lower())
+            if v is not None and t in en_idx:
+                aligned_src.append(v)
+                aligned_tgt.append(self._en_aligned_dict[t])
+
+        if len(aligned_src) >= 10:
+            A = _l2_rows(np.stack(aligned_src).astype(np.float32))
+            B = _l2_rows(np.stack(aligned_tgt).astype(np.float32))
+            cka = compute_cka(A, B)
+        else:
+            cka = float("nan")
+
         return {
             "bli_p5": bli,
-            "cka": float("nan"),
+            "cka": cka,
             "n_anchors": len(aligned_words),
             "coverage": self.coverage,
         }
