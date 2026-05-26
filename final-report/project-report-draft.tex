@@ -43,7 +43,13 @@
 % This is like the big heading at the top of your Word document.
 % Replace the placeholder text between the { } with your title.
 % ============================================================
-\title{Title of Your Project Goes Here}
+\title{Optimizing Cross-Lingual Embeddings for isiZulu, Sepedi, 
+and Setswana: Alignment Strategies, Pivot Selection, and 
+Morphological Challenges \\[0.4em]
+\medskip
+\large Alignment Performance and Data Efficiency Across 
+Conjunctive and Disjunctive Bantu Languages}
+\bigskip
 
 % ============================================================
 % AUTHOR(S)
@@ -53,16 +59,23 @@
 % If you have TWO authors, keep both blocks.
 % ============================================================
 \author{
-  Your Full Name Here \\          % <-- YOUR NAME
-  Department Name Goes Here \\    % <-- e.g. Department of Computer Science
-  University Name Goes Here \\    % <-- e.g. University of Pretoria
-  \texttt{email@goes.here}        % <-- your email address
+  Tom Balay \\          
+  Faculty of Engineering Built Environment and IT 
+  University of Pretoria \\
+  \texttt{u26853389@tuks.co.za}        
   % ---- DELETE the \and block below if you are the only author ----
   \and
-  Second Author Name Here \\
-  Department Name Goes Here \\
-  University Name Goes Here \\
-  \texttt{email@goes.here}
+  Franco van der Westhuizen  \\          
+  Faculty of Engineering Built Environment and IT 
+  University of Pretoria \\
+  \texttt{u23543729@tuks.co.za}        
+  \and
+  Ndamulelo Mulaudzi \\
+  Faculty of Engineering Built Environment and IT 
+  University of Pretoria \\
+  \texttt{u25715705@tuks.co.za} 
+  \and
+  Group 40       
 }
 
 % ============================================================
@@ -92,12 +105,46 @@
 \section{Introduction}
 % ---- Write your introduction paragraphs below ----
 
-Opening paragraph goes here. Introduce the problem and why it matters.
+South Africa currently gives constitutional recognition to eleven
+official languages. This reflects a national commitment cultural
+diversity and the accompanying linguistic equity. However, this
+commitment is largely unrealized in digital technologies as 
+evidenced by their underrepresentation in natural language processing 
+(NLP) researh and infrastructure. The consequence is a widening 
+accessibility gap where speakers of these languages are systematically 
+excluded from the benefits of language technologies that speakers of 
+high-resource languages such as English or French take for granted. 
+Search engines, virtual assistants, machine translation systems, and 
+automated information retrieval tools all presuppose the availability 
+of large, well-annotated corpora — resources that remain scarce for 
+the majority of South Africa's official languages.
 
-Second paragraph goes here. Give background context.
+Cross-lingual word embeddings offer a principled mechanism to address
+this scarcity. The objective here is to transfer information from
+high-resourced languages to low-resourced languages by projecting 
+independently learned monolingual embeddings into a shared multilingual
+represetation space. This way, a model trained on a high-resourced
+language like English can generalize to lower resourced languages. This
+transfer learning paradigm has demonstrated considerable promise across
+different downstream NLP tasks such as named entity recognition (NER), 
+part-of-speech tagging, and sentiment analysis. However, alignment quality 
+is not language-agnostic — it is conditioned on the morphological structure 
+of the target language. IsiZulu employs a conjunctive orthographic convention, 
+fusing multiple morphemes into single written tokens, while Sepedi and Setswana 
+follow a disjunctive convention, writing morphemes as discrete tokens. This 
+distinction has direct implications for the geometry of the resulting embedding 
+spaces and for the behaviour of alignment algorithms operating over them.
 
-Third paragraph goes here. State what this report will cover.
-
+This study investigates whether CCA outperforms VecMap and KCCA across these 
+morphologically distinct language pairs, and whether data volume requirements 
+for effective alignment differ between conjunctive and disjunctive languages 
+— with downstream named entity recognition (NER) as the evaluation task. These 
+questions bear on a broader ethical imperative: language technology that functions 
+only for a subset of a population's languages encodes structural inequality in software. 
+South Africa's multilingual context makes it both an urgent case study and a 
+generalisable test bed for low-resource NLP methodology, with findings intended to 
+inform alignment method selection and data collection strategies across the African 
+continent and beyond.
 % ============================================================
 % SUBSECTION — like "Heading 2" in Word
 % Use \subsection{Heading name} inside a section.
