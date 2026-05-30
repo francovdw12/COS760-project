@@ -178,7 +178,7 @@ def run_rq2(config: RQ2Config) -> None:
                 # Stage 1 — Alignment
                 aligner = make_aligner(method, lang, fraction, lex_path, config)
                 try:
-                    fit_aligner(
+                    aligner, n_train_anchors = fit_aligner(
                         aligner, src_words, src_matrix,
                         en_words, en_matrix, train_pairs,
                         en_matrix_orig=en_matrix_orig,
@@ -186,6 +186,15 @@ def run_rq2(config: RQ2Config) -> None:
                 except Exception as e:
                     print(f"  [{method}] fit failed: {e}")
                     continue
+
+                # Pre-alignment CKA
+                from lexicon import build_anchor_matrices
+                from rq2.diagnostics.cka import compute_cka
+                X_src_anc, X_tgt_anc = build_anchor_matrices(
+                    train_pairs, src_words, src_matrix, en_words, en_matrix
+                )
+                cka_pre = compute_cka(X_src_anc, X_tgt_anc) if len(X_src_anc) >= 10 else float("nan")
+                print(f"  [diag] pre-alignment CKA: {cka_pre:.4f}")
 
                 # Diagnostic layer
                 diag = run_diagnostics(
@@ -212,6 +221,8 @@ def run_rq2(config: RQ2Config) -> None:
                     diag=diag,
                     aligner=aligner,
                     en_baseline_f1=en_baseline_f1,
+                    n_train_anchors=n_train_anchors,
+                    cka_pre=cka_pre,
                 ))
 
     if not results:

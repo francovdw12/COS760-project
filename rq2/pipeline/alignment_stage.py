@@ -55,14 +55,18 @@ def fit_aligner(
     en_matrix: np.ndarray,
     lexicon_pairs: List[Tuple[str, str]],
     en_matrix_orig: np.ndarray | None = None,
-) -> AlignerBase:
+) -> Tuple[AlignerBase, int]:
     """Stage 1 — fit the aligner on source and English anchor matrices.
 
     en_matrix_orig: pre-supplementation English matrix passed through to fit()
     so that R is learned on reliable original vocabulary vectors only.
     """
+    from lexicon import build_anchor_matrices
+    X_src, _ = build_anchor_matrices(lexicon_pairs, src_words, src_matrix, en_words, en_matrix)
+    n_train_anchors = len(X_src)
+    print(f"  [fit] training anchors: {n_train_anchors}")
     aligner.fit(src_words, src_matrix, en_words, en_matrix, lexicon_pairs, en_matrix_orig)
-    return aligner
+    return aligner, n_train_anchors
 
 
 def run_diagnostics(

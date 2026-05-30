@@ -51,6 +51,8 @@ def assemble_result_row(
     diag: Dict,
     aligner: AlignerBase,
     en_baseline_f1: float = float("nan"), # default when validate_ner = False
+    n_train_anchors: int = -1,
+    cka_pre: float = float("nan"),
 ) -> Dict:
     """Assemble a single result row for the output CSV.
     """
@@ -68,6 +70,8 @@ def assemble_result_row(
         "bli_p5": round(diag.get("bli_p5", float("nan")), 4),
         "cka": round(cka, 4) if not np.isnan(cka) else "",
         "n_anchors": diag.get("n_anchors", -1),
+        "n_train_anchors": n_train_anchors,
+        "cka_pre": round(cka_pre, 4) if not np.isnan(cka_pre) else "",
         "vecmap_coverage": (
             round(aligner.coverage, 4)
             if isinstance(aligner, VecMapWrapper) else ""
