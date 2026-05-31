@@ -27,7 +27,7 @@ COS760-project/
 ├── run_rq1.py                # RQ1 orchestrator (alignment quality)  ← fully commented
 ├── run_rq2.py                # RQ2 orchestrator (data-efficiency learning curves)
 ├── visualize_rq1.py          # Generates the 6 RQ1 figures from rq1_results.csv
-├── visualize_rq2.py          # Generates per-method F1 and BLI p@1 learning curve plots
+├── visualize_rq2.py          # Generates 7 RQ2 figures from a results CSV (F1 curves, CKA heatmaps, BLI, break-even, morphology comparison)
 ├── 760.sh                    # Bootstrap: create .venv and install requirements
 ├── 760.ps1                   # Bootstrap: create .venv and install requirements -- PowerShell
 ├── requirements.txt
@@ -213,7 +213,7 @@ python visualize_rq1.py  # generates the 6 PNG figures
 
 ---
 
-## Running RQ2 — data efficiency *(implemented, not yet run)*
+## Running RQ2 — data efficiency
 
 `run_rq2.py` trains source embeddings on progressively smaller corpus subsets
 (100 / 75 / 50 / 25 / 10 / 5 %), aligns each with every method, and measures
@@ -221,19 +221,50 @@ zero-shot NER F1 to build learning curves.
 
 ```bash
 source .venv/bin/activate
-python run_rq2.py
 
-# Useful options:
-python run_rq2.py --langs zul tsn --fractions 1.0 0.25 0.05 --methods CCA KCCA VecMap --split test
-python run_rq2.py --force        # rebuild cached embeddings / alignments
+# Full grid (all languages, fractions, methods)
+python run_rq2.py \
+  --langs zul nso tsn \
+  --fractions 1.0 0.75 0.5 0.25 0.1 0.05 \
+  --methods CCA KCCA VecMap \
+  --split test \
+  --run-name baseline_experiment
+
+# Force rebuild of cached embeddings and alignment artifacts
+python run_rq2.py --force --run-name baseline_experiment
+
+# Subset run (e.g. smoke test)
+python run_rq2.py --langs zul --fractions 1.0 --methods CCA --run-name smoke_test
 ```
 
 It generates `data/subsets/{lang}/` corpora automatically and writes
-`results/rq2_results.csv` (per language × fraction × method:
-precision / recall / F1, plus VecMap coverage).
+`results/rq2/{run_name}/results.csv` (per language × fraction × method:
+precision / recall / F1, BLI p@5, CKA, training anchor count, VecMap coverage).
 
-> Learning-curve plots and the 50 %-F1 break-even analysis are **not yet
-> implemented** — there is currently no `visualize_rq2.py`.
+### Visualising RQ2 results
+
+```bash
+# Generate all 7 figures from a specific run
+python visualize_rq2.py \
+  --results-csv results/rq2/baseline_experiment/results.csv
+
+# Write figures to a custom output directory
+python visualize_rq2.py \
+  --results-csv results/rq2/baseline_experiment/results.csv \
+  --out-dir results/rq2/baseline_experiment/figures
+```
+
+Figures written:
+
+| File | Description |
+| :--- | :--- |
+| `rq2_cca_panels.png` | F1 curve + pre/post CKA heatmaps (with anchor counts) + BLI — CCA |
+| `rq2_kcca_panels.png` | F1 curve + pre/post CKA heatmaps (with anchor counts) + BLI — KCCA |
+| `rq2_vecmap_panels.png` | F1 curve + coverage heatmap + BLI — VecMap |
+| `rq2_learning_curves.png` | F1 vs corpus size (tokens) per language, all methods |
+| `rq2_breakeven_table.png` | Min tokens to reach F1 ≥ 0.03; hatched red = never reached |
+| `rq2_conjunctive_vs_disjunctive.png` | Mean F1 by morphological type, faceted by method |
+| `rq2_method_heatmap.png` | Full F1 grid (method × language × fraction) |
 
 ---
 

@@ -12,6 +12,7 @@ Unified RQ2 visualiser. Generates seven figures:
 
   Summary figures:
     rq2_learning_curves.png
+    rq2_bli_curves.png
     rq2_breakeven_table.png
     rq2_conjunctive_vs_disjunctive.png
     rq2_method_heatmap.png
@@ -41,7 +42,13 @@ from matplotlib.colors import Normalize
 # Constants
 # ---------------------------------------------------------------------------
 
-BREAKEVEN_F1 = 0.03
+# Arbitrarily set to 0.05 for visual comparison purposes only.
+# Does not represent a principled performance criterion from the literature.
+BREAKEVEN_F1 = 0.05
+
+# Visual comparison ceiling for F1 plots and heatmaps.
+# Set to match BREAKEVEN_F1 so all results visually read as underperforming.
+F1_VMAX = 0.05
 
 LANGUAGE_ORDER = ["tsn", "nso", "zul"]
 
@@ -86,9 +93,29 @@ FIGURE_BG    = "#FAFAF8"
 PANEL_BG     = "#F2F0EC"
 GRID_COLOR   = "#D8D4CC"
 
-FONT_LABEL = {"family": "serif", "size": 10}
-FONT_TICK  = {"family": "monospace", "size": 8}
-FONT_ANNOT = {"family": "monospace", "size": 7}
+# ---------------------------------------------------------------------------
+# Font sizes — adjust these to match the font size used in the report
+# ---------------------------------------------------------------------------
+FONT_SIZES = {
+    "title_fig":    22,   # figure suptitle
+    "title_panel":  18,   # individual panel/axes titles
+    "axis_label":   16,   # x/y axis labels
+    "tick":         14,   # axis tick labels
+    "legend":       11,   # legend text
+    "annot":        13,   # heatmap cell annotations
+    "cbar_label":   14,   # colourbar labels
+    "cbar_tick":    12,   # colourbar tick labels
+    "morpho_note":  12,   # small morphology annotation text
+    "heatmap_x":    11,   # method heatmap x-axis ticks
+}
+
+FONT_FAMILY_SERIF   = "serif"
+FONT_FAMILY_MONO    = "monospace"
+
+# Derived font dicts used by matplotlib fontdict= arguments
+FONT_LABEL = {"family": FONT_FAMILY_SERIF, "size": FONT_SIZES["axis_label"]}
+FONT_TICK  = {"family": FONT_FAMILY_MONO,  "size": FONT_SIZES["tick"]}
+FONT_ANNOT = {"family": FONT_FAMILY_MONO,  "size": FONT_SIZES["annot"]}
 
 sns.set_theme(style="whitegrid")
 
@@ -118,7 +145,7 @@ def load_results(csv_path: Path) -> pd.DataFrame:
     )
 
     for col in ["f1", "precision", "recall", "fraction", "subset_tokens",
-                "cka", "bli_p5", "en_baseline_f1"]:
+                "cka", "bli_p5", "en_baseline_f1", "cka_pre", "n_train_anchors"]:
         if col in df.columns:
             df[col] = pd.to_numeric(df[col], errors="coerce")
 
@@ -155,7 +182,8 @@ def _pivot(df: pd.DataFrame, value_col: str) -> pd.DataFrame:
     return piv.reindex(index=langs_present, columns=fracs_present)
 
 
-def _draw_heatmap(ax, data: pd.DataFrame, title: str, norm: Normalize, cmap: str):
+def _draw_heatmap(ax, data: pd.DataFrame, title: str, norm: Normalize, cmap: str,
+                  annot_df: pd.DataFrame | None = None):
     if data.empty:
         ax.set_visible(False)
         return None
@@ -175,28 +203,50 @@ def _draw_heatmap(ax, data: pd.DataFrame, title: str, norm: Normalize, cmap: str
         for j in range(data.shape[1]):
             val = data.values[i, j]
             if not np.isnan(val):
+                cell_text = f"{val:.3f}"
+                if annot_df is not None and not annot_df.empty:
+                    try:
+                        anc = annot_df.values[i, j]
+                        if not np.isnan(anc):
+                            cell_text += f"\n(n={int(anc)})"
+                    except (IndexError, ValueError):
+                        pass
                 ax.text(
-                    j, i, f"{val:.3f}",
+                    j, i, cell_text,
                     ha="center", va="center",
                     fontdict=FONT_ANNOT,
                     color="black" if val < (norm.vmax * 0.6) else "white",
                 )
-    ax.set_title(title, fontdict=FONT_LABEL, pad=6)
+    ax.set_title(title, fontdict={"family": FONT_FAMILY_SERIF, "size": FONT_SIZES["title_panel"]}, pad=6)
     ax.set_facecolor(PANEL_BG)
 
 
 def plot_method_panels(df_method: pd.DataFrame, method: str, out_dir: Path) -> None:
-    fig = plt.figure(figsize=(13, 11), facecolor=FIGURE_BG)
-    fig.suptitle(
-        f"RQ2 — {method} alignment\n"
-        "Zero-shot NER transfer across corpus fractions",
-        fontsize=14, fontweight="bold", fontfamily="serif", y=0.98,
-    )
+    is_vecmap = method == "VecMap"
 
-    gs = fig.add_gridspec(3, 1, height_ratios=[2.2, 1, 1], hspace=0.45)
-    ax_line = fig.add_subplot(gs[0])
-    ax_cka  = fig.add_subplot(gs[1])
-    ax_bli  = fig.add_subplot(gs[2])
+    if is_vecmap:
+        fig = plt.figure(figsize=(20, 14), facecolor=FIGURE_BG)
+        fig.suptitle(
+            f"RQ2 — {method} alignment\n"
+            "Zero-shot NER transfer across corpus fractions",
+            fontsize=FONT_SIZES["title_fig"], fontweight="bold", fontfamily=FONT_FAMILY_SERIF, y=0.98,
+        )
+        gs = fig.add_gridspec(3, 1, height_ratios=[2.2, 1, 1], hspace=0.45)
+        ax_line     = fig.add_subplot(gs[0])
+        ax_coverage = fig.add_subplot(gs[1])
+        ax_bli      = fig.add_subplot(gs[2])
+    else:
+        fig = plt.figure(figsize=(20, 20), facecolor=FIGURE_BG)
+        fig.suptitle(
+            f"RQ2 — {method} alignment\n"
+            "Zero-shot NER transfer across corpus fractions",
+            fontsize=FONT_SIZES["title_fig"], fontweight="bold", fontfamily=FONT_FAMILY_SERIF, y=0.98,
+        )
+        gs = fig.add_gridspec(4, 1, height_ratios=[2.2, 1, 1, 1], hspace=0.45)
+        ax_line     = fig.add_subplot(gs[0])
+        ax_cka_pre  = fig.add_subplot(gs[1])
+        ax_cka_post = fig.add_subplot(gs[2])
+        ax_bli      = fig.add_subplot(gs[3])
 
     # Panel 1 — F1 line
     ax_line.set_facecolor(PANEL_BG)
@@ -223,65 +273,111 @@ def plot_method_panels(df_method: pd.DataFrame, method: str, out_dir: Path) -> N
 
     ax_line.axhline(
         y=BREAKEVEN_F1, color="#888888", linestyle="--", linewidth=1,
-        label=f"Break-even F1={BREAKEVEN_F1}", zorder=2,
+        label=f"Reference F1={BREAKEVEN_F1} (arbitrary)", zorder=2,
     )
 
     ax_line.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
     ax_line.set_ylabel("Entity-level F1", fontdict=FONT_LABEL)
     ax_line.set_xlim(0.02, 1.05)
-    ax_line.set_ylim(bottom=0)
+    ax_line.set_ylim(0, F1_VMAX)
     ax_line.xaxis.set_major_formatter(ticker.PercentFormatter(xmax=1.0))
-    ax_line.tick_params(labelsize=8)
+    ax_line.tick_params(labelsize=FONT_SIZES["tick"])
     ax_line.legend(
-        loc="upper left", fontsize=8, framealpha=0.85,
-        edgecolor=GRID_COLOR, prop={"family": "serif"},
+        loc="upper left", fontsize=FONT_SIZES["legend"], framealpha=0.85,
+        edgecolor=GRID_COLOR, prop={"family": FONT_FAMILY_SERIF},
     )
     ax_line.set_title(
         "Panel 1 — Zero-shot NER F1 vs corpus fraction",
         fontdict=FONT_LABEL, pad=8,
     )
 
-    # Panels 2 & 3 — shared colour scale
-    cka_piv = _pivot(df_method, "cka")
-    bli_piv = _pivot(df_method, "bli_p5")
+    if is_vecmap:
+        cov_piv = _pivot(df_method, "vecmap_coverage")
+        bli_piv = _pivot(df_method, "bli_p5")
 
-    all_vals = np.concatenate([
-        cka_piv.values.flatten() if not cka_piv.empty else np.array([]),
-        bli_piv.values.flatten() if not bli_piv.empty else np.array([]),
-    ])
-    all_vals = all_vals[~np.isnan(all_vals)]
-    shared_vmin = float(np.nanmin(all_vals)) if len(all_vals) else 0.0
-    shared_vmax = max(
-        float(np.nanmax(all_vals)) * 1.05 if len(all_vals) else 0.5,
-        shared_vmin + 0.01,
-    )
-    norm = Normalize(vmin=shared_vmin, vmax=shared_vmax)
+        all_vals = np.concatenate([
+            cov_piv.values.flatten() if not cov_piv.empty else np.array([]),
+            bli_piv.values.flatten() if not bli_piv.empty else np.array([]),
+        ])
+        all_vals = all_vals[~np.isnan(all_vals)]
+        shared_vmin = float(np.nanmin(all_vals)) if len(all_vals) else 0.0
+        shared_vmax = max(float(np.nanmax(all_vals)) * 1.05 if len(all_vals) else 1.0,
+                          shared_vmin + 0.01)
+        norm = Normalize(vmin=shared_vmin, vmax=shared_vmax)
 
-    _draw_heatmap(
-        ax_cka, cka_piv,
-        "Panel 2 — CKA (alignment geometry)",
-        norm, HEATMAP_CMAP,
-    )
-    ax_cka.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
+        _draw_heatmap(ax_coverage, cov_piv,
+                      "Panel 2 — Vocabulary coverage (fraction of NER tokens found in aligned vocab)",
+                      norm, HEATMAP_CMAP)
+        ax_coverage.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
 
-    _draw_heatmap(
-        ax_bli, bli_piv,
-        "Panel 3 — BLI p@5 (lexicon induction accuracy)",
-        norm, HEATMAP_CMAP,
-    )
-    ax_bli.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
+        _draw_heatmap(ax_bli, bli_piv,
+                      "Panel 3 — BLI p@5 (lexicon induction accuracy)",
+                      norm, HEATMAP_CMAP)
+        ax_bli.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
 
-    cbar_ax = fig.add_axes([0.92, 0.08, 0.02, 0.28])
-    sm = ScalarMappable(cmap=HEATMAP_CMAP, norm=norm)
-    sm.set_array([])
-    cbar = fig.colorbar(sm, cax=cbar_ax)
-    cbar.ax.tick_params(labelsize=7)
-    cbar.set_label("Score", fontsize=8, fontfamily="serif")
+        cbar_ax = fig.add_axes([0.92, 0.08, 0.02, 0.28])
+        sm = ScalarMappable(cmap=HEATMAP_CMAP, norm=norm)
+        sm.set_array([])
+        cbar = fig.colorbar(sm, cax=cbar_ax)
+        cbar.ax.tick_params(labelsize=FONT_SIZES["cbar_tick"])
+        cbar.set_label("Score", fontsize=FONT_SIZES["cbar_label"], fontfamily=FONT_FAMILY_SERIF)
+
+    else:
+        cka_pre_piv  = _pivot(df_method, "cka_pre")
+        cka_post_piv = _pivot(df_method, "cka")
+        bli_piv      = _pivot(df_method, "bli_p5")
+        anc_piv      = _pivot(df_method, "n_train_anchors")
+
+        all_cka = np.concatenate([
+            cka_pre_piv.values.flatten()  if not cka_pre_piv.empty  else np.array([]),
+            cka_post_piv.values.flatten() if not cka_post_piv.empty else np.array([]),
+        ])
+        all_cka = all_cka[~np.isnan(all_cka)]
+        cka_vmin = float(np.nanmin(all_cka)) if len(all_cka) else 0.0
+        cka_vmax = max(float(np.nanmax(all_cka)) * 1.05 if len(all_cka) else 0.5,
+                       cka_vmin + 0.01)
+        cka_norm = Normalize(vmin=cka_vmin, vmax=cka_vmax)
+
+        bli_vals = bli_piv.values.flatten() if not bli_piv.empty else np.array([])
+        bli_vals = bli_vals[~np.isnan(bli_vals)]
+        bli_vmin = float(np.nanmin(bli_vals)) if len(bli_vals) else 0.0
+        bli_vmax = max(float(np.nanmax(bli_vals)) * 1.05 if len(bli_vals) else 0.1,
+                       bli_vmin + 0.01)
+        bli_norm = Normalize(vmin=bli_vmin, vmax=bli_vmax)
+
+        _draw_heatmap(ax_cka_pre, cka_pre_piv,
+                      "Panel 2 — CKA before alignment (raw space similarity)",
+                      cka_norm, HEATMAP_CMAP)
+        ax_cka_pre.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
+
+        _draw_heatmap(ax_cka_post, cka_post_piv,
+                      "Panel 3 — CKA after alignment (n_train_anchors in parentheses)",
+                      cka_norm, HEATMAP_CMAP, annot_df=anc_piv)
+        ax_cka_post.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
+
+        _draw_heatmap(ax_bli, bli_piv,
+                      "Panel 4 — BLI p@5 (lexicon induction accuracy)",
+                      bli_norm, HEATMAP_CMAP)
+        ax_bli.set_xlabel("Corpus fraction", fontdict=FONT_LABEL)
+
+        cbar_cka_ax = fig.add_axes([0.92, 0.35, 0.02, 0.28])
+        sm_cka = ScalarMappable(cmap=HEATMAP_CMAP, norm=cka_norm)
+        sm_cka.set_array([])
+        cbar_cka = fig.colorbar(sm_cka, cax=cbar_cka_ax)
+        cbar_cka.ax.tick_params(labelsize=FONT_SIZES["cbar_tick"])
+        cbar_cka.set_label("CKA", fontsize=FONT_SIZES["cbar_label"], fontfamily=FONT_FAMILY_SERIF)
+
+        cbar_bli_ax = fig.add_axes([0.92, 0.05, 0.02, 0.18])
+        sm_bli = ScalarMappable(cmap=HEATMAP_CMAP, norm=bli_norm)
+        sm_bli.set_array([])
+        cbar_bli = fig.colorbar(sm_bli, cax=cbar_bli_ax)
+        cbar_bli.ax.tick_params(labelsize=FONT_SIZES["cbar_tick"])
+        cbar_bli.set_label("BLI p@5", fontsize=FONT_SIZES["cbar_label"], fontfamily=FONT_FAMILY_SERIF)
 
     fig.text(
         0.01, 0.22,
         "← disjunctive\n← disjunctive\n← conjunctive",
-        fontsize=7, fontfamily="monospace", color="#666666", va="top",
+        fontsize=FONT_SIZES["morpho_note"], fontfamily=FONT_FAMILY_MONO, color="#666666", va="top",
     )
 
     _save(fig, out_dir, f"rq2_{method.lower()}_panels.png")
@@ -291,8 +387,17 @@ def plot_method_panels(df_method: pd.DataFrame, method: str, out_dir: Path) -> N
 # Summary figure 1 — learning curves
 # ---------------------------------------------------------------------------
 
+def _token_fmt(x, _pos=None) -> str:
+    """Format token counts as e.g. 75K, 1.5M."""
+    if x >= 1_000_000:
+        return f"{x/1_000_000:.1f}M"
+    if x >= 1_000:
+        return f"{x/1_000:.0f}K"
+    return str(int(x))
+
+
 def plot_learning_curves(df: pd.DataFrame, out_dir: Path) -> None:
-    fig, axes = plt.subplots(1, 3, figsize=(18, 6), sharey=True)
+    fig, axes = plt.subplots(1, 3, figsize=(15, 7), sharey=True)
 
     for ax, lang in zip(axes, LANG_ORDER_DISPLAY):
         sub = df[df["language_display"] == lang]
@@ -300,15 +405,15 @@ def plot_learning_curves(df: pd.DataFrame, out_dir: Path) -> None:
             msub = sub[sub["method"] == method].sort_values("subset_tokens")
             if msub.empty:
                 continue
-            x = np.log10(msub["subset_tokens"].clip(lower=1))
+            x = msub["subset_tokens"].clip(lower=1)
             y = msub["f1"]
             ax.plot(
-                x, y, marker="o", label=method,
+                np.log10(x), y, marker="o", label=method,
                 color=METHOD_PALETTE[method], linewidth=2,
             )
             for i in range(len(y) - 1):
                 if y.iloc[i] < BREAKEVEN_F1 <= y.iloc[i + 1]:
-                    be_x = x.iloc[i + 1]
+                    be_x = np.log10(x.iloc[i + 1])
                     ax.axvline(be_x, color=METHOD_PALETTE[method],
                                linestyle=":", linewidth=1, alpha=0.7)
                     ax.scatter([be_x], [BREAKEVEN_F1], marker="*", s=160,
@@ -316,25 +421,131 @@ def plot_learning_curves(df: pd.DataFrame, out_dir: Path) -> None:
                                label="_nolegend_")
 
         ax.axhline(BREAKEVEN_F1, color="black", linestyle="--",
-                   linewidth=1, label=f"F1={BREAKEVEN_F1}")
-        ax.set_title(lang, fontweight="bold")
-        ax.set_xlabel("log10(subset tokens)")
+                   linewidth=1, label=f"Reference F1={BREAKEVEN_F1} (arbitrary)")
+        ax.set_title(lang, fontweight="bold", fontsize=FONT_SIZES["title_panel"])
+        ax.set_xlabel("Corpus size (tokens)", fontsize=FONT_SIZES["axis_label"])
         if lang == LANG_ORDER_DISPLAY[0]:
-            ax.set_ylabel("Entity-level F1")
-        ax.legend(fontsize=8)
-        ax.set_ylim(bottom=0, top=max(df["f1"].max() * 1.2, 0.05))
-        ticks = ax.get_xticks()
-        ax.set_xticks(ticks)
-        ax.set_xticklabels([f"1e{t:.0f}" for t in ticks], fontsize=8)
+            ax.set_ylabel("Entity-level F1", fontsize=FONT_SIZES["axis_label"])
+        ax.legend(fontsize=FONT_SIZES["legend"])
+        ax.set_ylim(0, 0.06)
+
+        log_ticks = ax.get_xticks()
+        token_ticks = [t for t in log_ticks if 4 <= t <= 8]
+        ax.set_xticks(token_ticks)
+        ax.set_xticklabels([_token_fmt(10**t) for t in token_ticks], fontsize=FONT_SIZES["tick"])
+        ax.tick_params(axis="y", labelsize=FONT_SIZES["tick"])
 
     fig.suptitle(
         "RQ2 — NER F1 learning curves by corpus size\n"
-        f"(star = first crossing F1 >= {BREAKEVEN_F1}; "
-        "dashed = break-even threshold)",
-        fontsize=13,
+        f"(dashed = arbitrary reference F1={BREAKEVEN_F1})",
+        fontsize=FONT_SIZES["title_fig"],
     )
     fig.tight_layout(rect=(0, 0, 1, 0.92))
     _save(fig, out_dir, "rq2_learning_curves.png")
+
+
+# ---------------------------------------------------------------------------
+# Summary figure 1b — BLI p@5 learning curves
+# ---------------------------------------------------------------------------
+
+def plot_bli_curves(df: pd.DataFrame, out_dir: Path) -> None:
+    if "bli_p5" not in df.columns:
+        print("[plot] bli_p5 column not found — skipping BLI curves")
+        return
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 7), sharey=True)
+
+    # y ceiling: data max with 20% headroom, minimum 0.02 so axis is readable
+    bli_max = df["bli_p5"].dropna().max()
+    y_ceil = max(bli_max * 1.2, 0.02)
+
+    for ax, lang in zip(axes, LANG_ORDER_DISPLAY):
+        sub = df[df["language_display"] == lang]
+        for method in METHOD_ORDER:
+            msub = sub[sub["method"] == method].sort_values("subset_tokens")
+            if msub.empty:
+                continue
+            x = msub["subset_tokens"].clip(lower=1)
+            y = msub["bli_p5"].fillna(0)
+            ax.plot(
+                np.log10(x), y, marker="o", label=method,
+                color=METHOD_PALETTE[method], linewidth=2,
+            )
+
+        # ax.set_title(lang, fontweight="bold", fontsize=FONT_SIZES["title_panel"])
+        # ax.set_xlabel("Corpus size (tokens)", fontsize=FONT_SIZES["axis_label"])
+        if lang == LANG_ORDER_DISPLAY[0]:
+            ax.set_ylabel("BLI precision@5", fontsize=FONT_SIZES["axis_label"])
+        ax.legend(fontsize=FONT_SIZES["legend"])
+        ax.set_ylim(0, y_ceil)
+
+        log_ticks = ax.get_xticks()
+        token_ticks = [t for t in log_ticks if 4 <= t <= 8]
+        ax.set_xticks(token_ticks)
+        ax.set_xticklabels([_token_fmt(10**t) for t in token_ticks], fontsize=FONT_SIZES["tick"])
+        ax.tick_params(axis="y", labelsize=FONT_SIZES["tick"])
+
+    # fig.suptitle(
+    #     "RQ2 — BLI p@5 by corpus size\n"
+    #     "(near-zero across all methods confirms alignment failure is not data-quantity dependent)",
+    #     fontsize=FONT_SIZES["title_fig"],
+    # )
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    _save(fig, out_dir, "rq2_bli_curves.png")
+
+
+# ---------------------------------------------------------------------------
+# Diagnostic curves — BLI p@5, CKA pre, CKA post vs corpus size
+# ---------------------------------------------------------------------------
+
+def plot_bli_curves(df: pd.DataFrame, out_dir: Path) -> None:
+    """BLI p@5 learning curves — same layout as F1 learning curves.
+
+    Supports the argument that lexicon retrieval accuracy is near zero
+    regardless of corpus size, confirming alignment failure is structural.
+    """
+    if "bli_p5" not in df.columns:
+        print("[plot] bli_p5 column not found — skipping BLI curves")
+        return
+
+    fig, axes = plt.subplots(1, 3, figsize=(15, 7), sharey=True)
+
+    bli_max = df["bli_p5"].dropna().max()
+    y_ceil = max(bli_max * 1.2, 0.02)
+
+    for ax, lang in zip(axes, LANG_ORDER_DISPLAY):
+        sub = df[df["language_display"] == lang]
+        for method in METHOD_ORDER:
+            msub = sub[sub["method"] == method].sort_values("subset_tokens")
+            if msub.empty:
+                continue
+            x = msub["subset_tokens"].clip(lower=1)
+            y = msub["bli_p5"].fillna(0)
+            ax.plot(
+                np.log10(x), y, marker="o", label=method,
+                color=METHOD_PALETTE[method], linewidth=2,
+            )
+
+        # ax.set_title(lang, fontweight="bold", fontsize=FONT_SIZES["title_panel"])
+        ax.set_xlabel("Corpus size (tokens)", fontsize=FONT_SIZES["axis_label"])
+        if lang == LANG_ORDER_DISPLAY[0]:
+            ax.set_ylabel("BLI precision@5", fontsize=FONT_SIZES["axis_label"])
+        ax.legend(fontsize=FONT_SIZES["legend"])
+        ax.set_ylim(0, y_ceil)
+
+        log_ticks = ax.get_xticks()
+        token_ticks = [t for t in log_ticks if 4 <= t <= 8]
+        ax.set_xticks(token_ticks)
+        ax.set_xticklabels([_token_fmt(10**t) for t in token_ticks], fontsize=FONT_SIZES["tick"])
+        ax.tick_params(axis="y", labelsize=FONT_SIZES["tick"])
+
+    fig.suptitle(
+        "RQ2 — BLI p@5 by corpus size\n"
+        "(near-zero across all methods confirms alignment failure is not data-quantity dependent)",
+        fontsize=FONT_SIZES["title_fig"],
+    )
+    fig.tight_layout(rect=(0, 0, 1, 0.92))
+    _save(fig, out_dir, "rq2_bli_curves.png")
 
 
 # ---------------------------------------------------------------------------
@@ -361,17 +572,11 @@ def plot_breakeven_table(df: pd.DataFrame, out_dir: Path) -> None:
         be_df["method"], categories=METHOD_ORDER, ordered=True
     )
 
-    fig, ax = plt.subplots(figsize=(12, 5))
+    fig, ax = plt.subplots(figsize=(18, 8))
     width = 0.22
     x = np.arange(len(LANG_ORDER_DISPLAY))
 
-    # Determine a sane y-range. When NO method crosses the threshold (the honest
-    # case here), every bar is 0; fall back to the corpus-size range so the axis
-    # and the "never" labels stay bounded (a label far outside the data range
-    # blows up bbox_inches="tight").
-    crossed_vals = be_df["breakeven_tokens"].dropna().tolist()
-    top = max(crossed_vals) if crossed_vals else float(df["subset_tokens"].max())
-    offset = top * 0.01
+    max_val = be_df["breakeven_tokens"].replace(float("nan"), 0).max()
 
     for i, method in enumerate(METHOD_ORDER):
         msub = be_df[be_df["method"] == method]
@@ -385,21 +590,35 @@ def plot_breakeven_table(df: pd.DataFrame, out_dir: Path) -> None:
             label=method, color=METHOD_PALETTE[method], alpha=0.85,
         )
         for bar, raw in zip(bars, vals):
-            label = "never" if np.isnan(raw) else f"{int(raw):,}"
-            ax.text(
-                bar.get_x() + bar.get_width() / 2,
-                bar.get_height() + offset,
-                label, ha="center", va="bottom", fontsize=8,
-            )
+            if np.isnan(raw):
+                ax.bar(
+                    bar.get_x(), max_val * 0.08 if max_val > 0 else 1,
+                    width, bottom=0,
+                    color="none", edgecolor="#CC3333",
+                    linewidth=1.2, hatch="///",
+                )
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    max_val * 0.09 if max_val > 0 else 1.1,
+                    "never", ha="center", va="bottom",
+                    fontsize=FONT_SIZES["tick"], color="#CC3333",
+                )
+            else:
+                ax.text(
+                    bar.get_x() + bar.get_width() / 2,
+                    bar.get_height() + max_val * 0.01,
+                    f"{int(raw):,}", ha="center", va="bottom", fontsize=FONT_SIZES["tick"],
+                )
 
     ax.set_ylim(0, top * 1.15)
     ax.set_xticks(x)
     ax.set_xticklabels(LANG_ORDER_DISPLAY)
-    ax.set_ylabel("Corpus tokens at break-even")
+    ax.set_ylabel("Corpus tokens at reference F1")
+    ax.yaxis.set_major_formatter(ticker.FuncFormatter(lambda v, _: _token_fmt(v)))
     ax.set_title(
-        f"RQ2 — Min tokens to reach F1 >= {BREAKEVEN_F1}\n"
-        "(bars at 0 = threshold never reached with available data)",
-        fontsize=13,
+        f"RQ2 — Min tokens to reach arbitrary reference F1 >= {BREAKEVEN_F1}\n"
+        "(hatched red = threshold never reached within available data)",
+        fontsize=FONT_SIZES["title_fig"],
     )
     ax.legend(title="Method")
     fig.tight_layout()
@@ -407,7 +626,7 @@ def plot_breakeven_table(df: pd.DataFrame, out_dir: Path) -> None:
 
 
 # ---------------------------------------------------------------------------
-# Summary figure 3 — conjunctive vs disjunctive
+# Summary figure 3 — conjunctive vs disjunctive (faceted by method)
 # ---------------------------------------------------------------------------
 
 def plot_conjunctive_vs_disjunctive(df: pd.DataFrame, out_dir: Path) -> None:
@@ -417,34 +636,39 @@ def plot_conjunctive_vs_disjunctive(df: pd.DataFrame, out_dir: Path) -> None:
         if l == "zul" else "Disjunctive (Sepedi + Setswana)"
     )
 
-    agg = (
-        df2.groupby(["morphology", "fraction"], observed=True)["f1"]
-        .mean()
-        .reset_index()
-        .sort_values("fraction")
-    )
+    fig, axes = plt.subplots(1, 3, figsize=(24, 8), sharey=True)
 
-    fig, ax = plt.subplots(figsize=(10, 5))
-    for morpho, color in MORPHO_PALETTE.items():
-        sub = agg[agg["morphology"] == morpho]
-        ax.plot(
-            sub["fraction"] * 100, sub["f1"],
-            marker="o", label=morpho, color=color, linewidth=2,
+    for ax, method in zip(axes, METHOD_ORDER):
+        msub = df2[df2["method"] == method]
+        agg = (
+            msub.groupby(["morphology", "fraction"], observed=True)["f1"]
+            .mean()
+            .reset_index()
+            .sort_values("fraction")
         )
+        for morpho, color in MORPHO_PALETTE.items():
+            sub = agg[agg["morphology"] == morpho]
+            ax.plot(
+                sub["fraction"] * 100, sub["f1"],
+                marker="o", label=morpho, color=color, linewidth=2,
+            )
+        ax.axhline(
+            BREAKEVEN_F1, color="black", linestyle="--",
+            linewidth=1, label=f"Reference F1={BREAKEVEN_F1} (arbitrary)",
+        )
+        ax.set_title(method, fontweight="bold", fontsize=FONT_SIZES["title_panel"])
+        ax.set_xlabel("Corpus fraction used (%)", fontsize=FONT_SIZES["axis_label"])
+        if method == METHOD_ORDER[0]:
+            ax.set_ylabel("Mean entity-level F1", fontsize=FONT_SIZES["axis_label"])
+        ax.set_ylim(0, F1_VMAX)
+        if method == METHOD_ORDER[-1]:
+            ax.legend(fontsize=FONT_SIZES["legend"], loc="upper right")
 
-    ax.axhline(
-        BREAKEVEN_F1, color="black", linestyle="--",
-        linewidth=1, label=f"Break-even F1={BREAKEVEN_F1}",
-    )
-    ax.set_xlabel("Corpus fraction used (%)")
-    ax.set_ylabel("Mean entity-level F1 (across methods)")
-    ax.set_title(
+    fig.suptitle(
         "RQ2 — Conjunctive vs Disjunctive language data efficiency\n"
-        "(mean F1 across CCA / KCCA / VecMap methods)",
-        fontsize=13,
+        "(mean F1 per method; faceted by alignment method)",
+        fontsize=FONT_SIZES["title_fig"],
     )
-    ax.legend()
-    ax.set_ylim(bottom=0)
     fig.tight_layout()
     _save(fig, out_dir, "rq2_conjunctive_vs_disjunctive.png")
 
@@ -474,25 +698,31 @@ def plot_method_heatmap(df: pd.DataFrame, out_dir: Path) -> None:
         columns=[c for c in col_order if c in pivot.columns],
     )
 
+    n_fracs = len(FRACTION_ORDER)
+    vlines = [n_fracs * i for i in range(1, len(LANG_ORDER_DISPLAY))]
+
     fig, ax = plt.subplots(
-        figsize=(max(10, len(pivot.columns) * 0.8 + 2), 4)
+        figsize=(max(16, len(pivot.columns) * 1.2 + 2), 6)
     )
     sns.heatmap(
         pivot, annot=True, fmt=".3f", cmap="RdYlGn",
-        vmin=0.0, vmax=max(df["f1"].max() * 1.2, 0.05),
+        vmin=0.0, vmax=F1_VMAX,
         linewidths=0.4, linecolor="white",
         cbar_kws={"label": "F1"},
         ax=ax,
     )
+    for vl in vlines:
+        ax.axvline(vl, color="black", linewidth=1.5)
+
     ax.set_title(
         "RQ2 — Zero-shot NER F1 heatmap "
         "(method x language x corpus fraction)\n"
-        "green = high F1, red = low F1",
-        fontsize=13,
+        "green = high F1, red = low F1; colour scale ceiling = arbitrary reference F1",
+        fontsize=FONT_SIZES["title_fig"],
     )
-    ax.set_xlabel("Language — corpus fraction")
-    ax.set_ylabel("Method")
-    ax.tick_params(axis="x", labelsize=7, rotation=45)
+    ax.set_xlabel("Language — corpus fraction", fontsize=FONT_SIZES["axis_label"])
+    ax.set_ylabel("Method", fontsize=FONT_SIZES["axis_label"])
+    ax.tick_params(axis="x", labelsize=FONT_SIZES["heatmap_x"], rotation=45)
     fig.tight_layout()
     _save(fig, out_dir, "rq2_method_heatmap.png")
 
@@ -583,6 +813,7 @@ def main(argv=None) -> int:
         )
 
     plot_learning_curves(df, out_dir)
+    plot_bli_curves(df, out_dir)
     plot_breakeven_table(df, out_dir)
     plot_conjunctive_vs_disjunctive(df, out_dir)
     plot_method_heatmap(df, out_dir)
