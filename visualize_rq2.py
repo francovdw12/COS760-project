@@ -472,61 +472,7 @@ def plot_bli_curves(df: pd.DataFrame, out_dir: Path) -> None:
                 color=METHOD_PALETTE[method], linewidth=2,
             )
 
-        # ax.set_title(lang, fontweight="bold", fontsize=FONT_SIZES["title_panel"])
-        # ax.set_xlabel("Corpus size (tokens)", fontsize=FONT_SIZES["axis_label"])
-        if lang == LANG_ORDER_DISPLAY[0]:
-            ax.set_ylabel("BLI precision@5", fontsize=FONT_SIZES["axis_label"])
-        ax.legend(fontsize=FONT_SIZES["legend"])
-        ax.set_ylim(0, y_ceil)
-
-        log_ticks = ax.get_xticks()
-        token_ticks = [t for t in log_ticks if 4 <= t <= 8]
-        ax.set_xticks(token_ticks)
-        ax.set_xticklabels([_token_fmt(10**t) for t in token_ticks], fontsize=FONT_SIZES["tick"])
-        ax.tick_params(axis="y", labelsize=FONT_SIZES["tick"])
-
-    # fig.suptitle(
-    #     "RQ2 — BLI p@5 by corpus size\n"
-    #     "(near-zero across all methods confirms alignment failure is not data-quantity dependent)",
-    #     fontsize=FONT_SIZES["title_fig"],
-    # )
-    fig.tight_layout(rect=(0, 0, 1, 0.92))
-    _save(fig, out_dir, "rq2_bli_curves.png")
-
-
-# ---------------------------------------------------------------------------
-# Diagnostic curves — BLI p@5, CKA pre, CKA post vs corpus size
-# ---------------------------------------------------------------------------
-
-def plot_bli_curves(df: pd.DataFrame, out_dir: Path) -> None:
-    """BLI p@5 learning curves — same layout as F1 learning curves.
-
-    Supports the argument that lexicon retrieval accuracy is near zero
-    regardless of corpus size, confirming alignment failure is structural.
-    """
-    if "bli_p5" not in df.columns:
-        print("[plot] bli_p5 column not found — skipping BLI curves")
-        return
-
-    fig, axes = plt.subplots(1, 3, figsize=(15, 7), sharey=True)
-
-    bli_max = df["bli_p5"].dropna().max()
-    y_ceil = max(bli_max * 1.2, 0.02)
-
-    for ax, lang in zip(axes, LANG_ORDER_DISPLAY):
-        sub = df[df["language_display"] == lang]
-        for method in METHOD_ORDER:
-            msub = sub[sub["method"] == method].sort_values("subset_tokens")
-            if msub.empty:
-                continue
-            x = msub["subset_tokens"].clip(lower=1)
-            y = msub["bli_p5"].fillna(0)
-            ax.plot(
-                np.log10(x), y, marker="o", label=method,
-                color=METHOD_PALETTE[method], linewidth=2,
-            )
-
-        # ax.set_title(lang, fontweight="bold", fontsize=FONT_SIZES["title_panel"])
+        ax.set_title(lang, fontweight="bold", fontsize=FONT_SIZES["title_panel"])
         ax.set_xlabel("Corpus size (tokens)", fontsize=FONT_SIZES["axis_label"])
         if lang == LANG_ORDER_DISPLAY[0]:
             ax.set_ylabel("BLI precision@5", fontsize=FONT_SIZES["axis_label"])
@@ -572,11 +518,13 @@ def plot_breakeven_table(df: pd.DataFrame, out_dir: Path) -> None:
         be_df["method"], categories=METHOD_ORDER, ordered=True
     )
 
-    fig, ax = plt.subplots(figsize=(18, 8))
+    fig, ax = plt.subplots(figsize=(26, 10))
     width = 0.22
     x = np.arange(len(LANG_ORDER_DISPLAY))
 
     max_val = be_df["breakeven_tokens"].replace(float("nan"), 0).max()
+    if max_val == 0:
+        max_val = 1  # fallback when no method ever crossed the threshold
 
     for i, method in enumerate(METHOD_ORDER):
         msub = be_df[be_df["method"] == method]
@@ -610,7 +558,7 @@ def plot_breakeven_table(df: pd.DataFrame, out_dir: Path) -> None:
                     f"{int(raw):,}", ha="center", va="bottom", fontsize=FONT_SIZES["tick"],
                 )
 
-    ax.set_ylim(0, top * 1.15)
+    ax.set_ylim(0, max_val * 1.15)
     ax.set_xticks(x)
     ax.set_xticklabels(LANG_ORDER_DISPLAY)
     ax.set_ylabel("Corpus tokens at reference F1")
